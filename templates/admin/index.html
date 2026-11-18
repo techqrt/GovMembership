@@ -1,0 +1,23 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+    {% if dashboard_cards %}
+        <div class="grid gap-4 mb-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="dashboard-cards">
+            {% for card in dashboard_cards %}
+                <a href="{{ card.link }}" class="block border border-base-200 rounded-default p-4 bg-white dark:bg-base-900 dark:border-base-800">
+                    <div class="text-sm text-font-subtle-light dark:text-font-subtle-dark">{{ card.title }}</div>
+                    <div class="text-3xl font-semibold mt-1">{{ card.value }}</div>
+                </a>
+            {% endfor %}
+        </div>
+    {% endif %}
+    {% include "unfold/helpers/dashboard_default.html" %}
+{% endblock %}

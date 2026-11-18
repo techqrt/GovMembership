@@ -1,0 +1,19 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n %}
+
+{% block content %}
+    <div class="max-w-xl border border-base-200 rounded-default p-6 bg-white dark:bg-base-900 dark:border-base-800">
+        <h2 class="text-lg font-semibold mb-2">Start a scheme sync now?</h2>
+        <p class="mb-2">This fetches the approved source sitemap and adds new schemes or updates changed ones. It runs in the background and can take a long time on the first full import.</p>
+        <p class="mb-4 text-sm text-font-subtle-light dark:text-font-subtle-dark">Schemes you edited or deleted are never overwritten. A daily automatic sync already runs; use this only when you need it earlier.</p>
+        {% if busy %}
+            <p class="mb-4 font-semibold">A sync is already running, so a new one cannot start.</p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default"{% if busy %} disabled{% endif %}>Start sync</button>
+            <a href="{{ back_url }}" class="ml-4">Cancel</a>
+        </form>
+    </div>
+{% endblock %}
