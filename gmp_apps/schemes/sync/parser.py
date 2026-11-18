@@ -375,7 +375,7 @@ def _images(article: Node, page_url: str) -> list[str]:
             and not any(part in path for part in ('/styles/', '/pictures/', 'term-icon'))
         ):
             url = f'{host.scheme}://{host.netloc}{path}'
-            if url not in images:
+            if url not in images and len(url) <= 500:  # source_url column is 500 chars; skip longer ones
                 images.append(url)
         if len(images) >= MAX_IMAGES:
             break
