@@ -3,7 +3,7 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from urllib.robotparser import RobotFileParser
 
 from gmp.config import Configurations
@@ -43,6 +43,12 @@ def _ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context()
 
 
+def _ascii_url(url: str) -> str:
+    """Percent-encode non-ASCII characters (e.g. Hindi file names): HTTP request lines must be ASCII.
+    Already-encoded sequences and URL punctuation are left untouched."""
+    return quote(url, safe="%:/?#[]@!$&'()*+,;=~-._")
+
+
 class _SameHostRedirects(urllib.request.HTTPRedirectHandler):
     """A redirect that leaves the approved host is refused, so the source cannot steer us elsewhere."""
 
@@ -79,7 +85,7 @@ class SchemeSource:
         raise last_error
 
     def _get(self, url: str, max_bytes: int) -> bytes:
-        request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept': 'text/html,application/xml;q=0.9,*/*;q=0.5'})
+        request = urllib.request.Request(_ascii_url(url), headers={'User-Agent': USER_AGENT, 'Accept': 'text/html,application/xml;q=0.9,*/*;q=0.5'})
         try:
             with self._opener.open(request, timeout=Configurations.scheme_sync_request_timeout) as response:
                 if response.status != 200:
@@ -89,6 +95,8 @@ class SchemeSource:
             raise SourceError(f'HTTP {error.code}', status=error.code, retryable=error.code >= 500 or error.code == 429) from error
         except (urllib.error.URLError, socket.timeout, TimeoutError, ssl.SSLError, ConnectionError) as error:
             raise SourceError(f'Network error: {error}', retryable=True) from error
+        except UnicodeError as error:
+            raise SourceError(f'URL cannot be requested: {error.__class__.__name__}') from error
         if len(data) > max_bytes:
             raise SourceError('Response is too large')
         return data
