@@ -748,7 +748,7 @@ class SchemeMemberApiTests(SchemeApiBase):
         image = self.add_image(scheme)
         response = self.as_user(self.member()).get(self.LIST)
         row = response.data['data']['data'][0]
-        self.assertEqual(set(row), {'schemeId', 'title', 'department', 'summary', 'imageUrl', 'tags', 'updatedDateTime'})
+        self.assertEqual(set(row), {'schemeId', 'title', 'department', 'summary', 'imageUrl', 'tags', 'isActive', 'updatedDateTime'})
         self.assertEqual((row['summary'], row['imageUrl']), ('About Visible one', f'http://testserver{image.file.url}'))
         payload = str(response.data['data'])
         for internal in ('status', 'locallyEdited', 'contentHash', 'isManual', 'reviewedBy', 'sourceLastmod', 'pending_review'):
@@ -1371,7 +1371,7 @@ class SchemeAdminRichTests(SchemeApiBase):
             'title': scheme.title, 'department': scheme.department, 'description': scheme.description, 'eligibility': scheme.eligibility,
             'benefits': scheme.benefits, 'application_procedure': scheme.application_procedure, 'required_documents': scheme.required_documents,
             'highlights': scheme.highlights, 'contact_details': scheme.contact_details,
-            'links_text': '', 'overview_text': '', 'additional_text': '[]', 'source_url': '', '_save': 'Save',
+            'links_text': '', 'overview_text': '', 'additional_text': '[]', 'source_url': '', '_save': 'Save', 'is_accepting_applications': 'on',
             'tags-TOTAL_FORMS': '0', 'tags-INITIAL_FORMS': '0', 'tags-MIN_NUM_FORMS': '0', 'tags-MAX_NUM_FORMS': '1000',
             'images-TOTAL_FORMS': '0', 'images-INITIAL_FORMS': '0', 'images-MIN_NUM_FORMS': '0', 'images-MAX_NUM_FORMS': '10', 'documents-TOTAL_FORMS': '0', 'documents-INITIAL_FORMS': '0', 'documents-MIN_NUM_FORMS': '0', 'documents-MAX_NUM_FORMS': '10',
         }
@@ -2350,3 +2350,67 @@ class SchemeMediaAdminTests(SchemeApiBase):
         self.assertContains(self.client_.get('/admin/schemes/schemesyncrun/'), '>7<')
         scheme = self.scheme('Verified one', media_synced_at=timezone.now())
         self.assertContains(self.client_.get(f'{self.LIST}{scheme.pk}/change/'), 'Media synced at')
+
+
+class SchemeActiveFlagTests(SchemeApiBase):
+    """FG7 item 6: members see Active or Closed; an admin sets it; the sync never touches it."""
+
+    def test_new_schemes_are_active_and_the_flag_is_in_list_and_detail(self) -> None:
+        scheme = self.scheme('Open one')
+        member = self.as_user(self.member())
+        row = member.get('/schemes/get_all/').data['data']['data'][0]
+        detail = member.get(f'/schemes/get/?scheme_id={scheme.pk}').data['data']
+        self.assertEqual((row['isActive'], detail['isActive']), (True, True))
+
+    def test_a_closed_scheme_is_still_listed_but_shows_closed(self) -> None:
+        scheme = self.scheme('Shut one', is_accepting_applications=False)
+        member = self.as_user(self.member())
+        self.assertEqual(member.get('/schemes/get_all/').data['data']['data'][0]['isActive'], False)
+        self.assertEqual(member.get(f'/schemes/get/?scheme_id={scheme.pk}').data['data']['isActive'], False)
+
+    def test_a_hidden_scheme_is_still_hidden_whatever_the_flag(self) -> None:
+        scheme = self.scheme('Hidden one', status='unpublished')
+        member = self.as_user(self.member())
+        self.assertEqual(member.get('/schemes/get_all/').data['data']['data'], [])
+        self.assertEqual(member.get(f'/schemes/get/?scheme_id={scheme.pk}').status_code, 404)
+
+    def test_the_flag_appears_in_the_dashboard_schemes_section(self) -> None:
+        self.scheme('Shut one', is_accepting_applications=False)
+        sections = {s['key']: s for s in self.as_user(self.member()).get('/dashboard/get/').data['data']['sections']}
+        self.assertEqual(sections['schemes']['data']['items'][0]['isActive'], False)
+
+    def test_an_admin_can_close_and_reopen_without_marking_the_scheme_as_locally_edited(self) -> None:
+        scheme = self.scheme('Imported one')
+        client = Client()
+        client.force_login(self.staff('Scheme Reviewers'))
+        base = SchemeAdminRichTests.form(self, scheme)  # type: ignore[arg-type]
+        closed = {k: v for k, v in base.items() if k != 'is_accepting_applications'}   # an unticked checkbox is not sent
+        client.post(f'/admin/schemes/scheme/{scheme.pk}/change/', closed, follow=True)
+        scheme.refresh_from_db()
+        self.assertEqual((scheme.is_accepting_applications, scheme.locally_edited), (False, False))
+        client.post(f'/admin/schemes/scheme/{scheme.pk}/change/', base, follow=True)
+        scheme.refresh_from_db()
+        self.assertTrue(scheme.is_accepting_applications)
+
+    def test_the_admin_list_can_be_filtered_by_the_flag(self) -> None:
+        self.scheme('Open one')
+        self.scheme('Shut one', is_accepting_applications=False)
+        client = Client()
+        client.force_login(self.staff('Scheme Reviewers'))
+        page_ = client.get('/admin/schemes/scheme/?is_accepting_applications__exact=0')
+        self.assertContains(page_, 'Shut one')
+        self.assertNotContains(page_, 'Open one')
+        self.assertIn('is_accepting_applications', [getattr(spec, 'field_path', None) for spec in page_.context['cl'].filter_specs])
+
+
+class SchemeActiveFlagSyncTests(SyncBase):
+    def test_a_content_update_from_the_source_keeps_the_admins_closed_flag(self) -> None:
+        self.run_sync(self.source({'alpha-scheme': ('2024-05-01', page('Alpha'))}))
+        Scheme.objects.update(status='published', is_accepting_applications=False)
+        run = self.run_sync(self.source({'alpha-scheme': ('2024-06-01', page('Alpha', benefits=('Now Rs. 9000',)))}))
+        self.assertEqual(run.updated, 1)
+        self.assertFalse(Scheme.objects.get().is_accepting_applications)
+
+    def test_a_scheme_found_by_the_sync_starts_active(self) -> None:
+        self.run_sync(self.source({'alpha-scheme': ('2024-05-01', page('Alpha'))}))
+        self.assertTrue(Scheme.objects.get().is_accepting_applications)

@@ -66,6 +66,13 @@ GROUPS: dict[str, list[tuple[str, str]]] = {
         ('member_documents', 'view_memberdocument'),
         ('member_documents', 'download_memberdocument'),
     ],
+    # Write and edit the English and Hindi app text. Cannot touch members, content or anything else.
+    'App Text Editors': [
+        ('app_text', 'view_apptext'),
+        ('app_text', 'add_apptext'),
+        ('app_text', 'change_apptext'),
+        ('app_text', 'delete_apptext'),
+    ],
     # Decide which dashboard sections members see, in what order and from which level. Nothing else.
     'Dashboard Managers': [
         ('dashboard', 'view_dashboardsection'),

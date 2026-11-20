@@ -8,6 +8,7 @@ class SchemeItemSerializer(serializers.Serializer):
     summary = serializers.CharField(allow_blank=True)
     imageUrl = serializers.URLField(allow_null=True)
     tags = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
+    isActive = serializers.BooleanField(help_text='true: show Active; false: show Closed (an admin switch)')
     updatedDateTime = serializers.DateTimeField()
 
 

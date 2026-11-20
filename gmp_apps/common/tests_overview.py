@@ -107,7 +107,7 @@ class OverviewCardTests(OverviewBase):
             'Knowledge Approvers': {'Approved chatbot entries'},
             'Content Editors': {'Scheduled content'}, 'Content Publishers': {'Scheduled content'},
             'Support Handlers': set(), 'Portal Managers': set(), 'Member Managers': set(), 'Membership Reviewers': set(), 'Dashboard Managers': set(),
-            'Document Reviewers': set(), 'Identity Reviewers': set(),
+            'Document Reviewers': set(), 'Identity Reviewers': set(), 'App Text Editors': set(),
         }
         for group, wanted in expected.items():
             seen = set(self.cards(self.staff(group))) & NEW_TITLES
@@ -132,6 +132,7 @@ class PermissionMatrixTests(OverviewBase):
         'Knowledge Approvers': {'chatbot.view_knowledgeentry', 'chatbot.add_knowledgeentry', 'chatbot.change_knowledgeentry',
                                 'chatbot.delete_knowledgeentry', 'chatbot.approve_knowledgeentry', 'chatbot.view_chatlog'},
         'Dashboard Managers': {'dashboard.view_dashboardsection', 'dashboard.change_dashboardsection'},
+        'App Text Editors': {f'app_text.{a}_apptext' for a in ('view', 'add', 'change', 'delete')},
         'Document Reviewers': {'member_documents.view_memberdocument', 'member_documents.download_memberdocument'},
         'Identity Reviewers': {'authentication.view_user', 'authentication.view_government_ids'},
         'Content Editors': {f'content.{a}_{m}' for a in ('view', 'add', 'change') for m in ('contentitem', 'contentcategory')},
@@ -184,7 +185,7 @@ class PermissionMatrixTests(OverviewBase):
     def test_groups_do_not_reach_into_each_others_areas(self) -> None:
         areas = {'Member Managers': 'authentication', 'Membership Reviewers': 'membership', 'Scheme Reviewers': 'schemes', 'Knowledge Editors': 'chatbot',
                  'Knowledge Approvers': 'chatbot', 'Dashboard Managers': 'dashboard', 'Content Editors': 'content', 'Content Publishers': 'content',
-                 'Portal Managers': 'portals', 'Support Handlers': 'contact_admin', 'Document Reviewers': 'member_documents', 'Identity Reviewers': 'authentication'}
+                 'Portal Managers': 'portals', 'Support Handlers': 'contact_admin', 'Document Reviewers': 'member_documents', 'Identity Reviewers': 'authentication', 'App Text Editors': 'app_text'}
         for name, app in areas.items():
             self.assertEqual({p.split('.')[0] for p in self.granted(name)}, {app}, name)
 

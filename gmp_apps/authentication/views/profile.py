@@ -6,6 +6,10 @@ from gmp_apps.authentication.models import User
 from gmp_apps.authentication.utils import AuthenticationUtils
 from gmp_apps.common.common import Common
 from gmp_apps.common.utils import Utils
+from gmp_apps.contact_admin.models import ContactRequest
+from gmp_apps.contact_admin.models.contact_request import OPEN_STATUSES
+from gmp_apps.membership.models import PermanentApplication
+from gmp_apps.membership.models.permanent_application import ApplicationStatus
 
 
 class AuthenticationProfileView:
@@ -18,9 +22,15 @@ class AuthenticationProfileView:
     @Common().exception_handler
     def get_extract(self, params: GetProfileRequest) -> Response:
         user = User.objects.get(user_id=params.user_id)
-        return Response(Utils.success_response_data(
-            message=self.data_get, data=AuthenticationUtils.profile_data(user),
-        ))
+        data = {**AuthenticationUtils.profile_data(user), 'activeApplications': self.active_applications(user)}
+        return Response(Utils.success_response_data(message=self.data_get, data=data))
+
+    @staticmethod
+    def active_applications(user: User) -> dict[str, int]:
+        """The caller's own unfinished items, for the profile badge. Read-only, computed on every read, nothing stored."""
+        permanent = PermanentApplication.objects.filter(user=user, status=ApplicationStatus.PENDING).count()
+        support = ContactRequest.objects.filter(user=user, status__in=OPEN_STATUSES).count()
+        return {'permanent': permanent, 'support': support, 'total': permanent + support}
 
     @Common().exception_handler
     def update_extract(self, params: UpdateProfileRequest) -> Response:

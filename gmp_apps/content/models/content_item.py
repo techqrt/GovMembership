@@ -25,6 +25,13 @@ def levels_visible_to(member_level: str) -> list[str]:
     return [level for level, value in LEVEL_RANK.items() if value <= rank]
 
 
+class VideoQuality(models.TextChoices):
+    SD = 'sd', 'SD'
+    HD = 'hd', 'HD'
+    FULL_HD = 'full_hd', 'Full HD'
+    UHD_4K = '4k', '4K Ultra HD'
+
+
 class ContentType(models.TextChoices):
     POST = 'post', 'Post'
     ANNOUNCEMENT = 'announcement', 'Announcement'
@@ -63,6 +70,8 @@ class ContentItem(models.Model):
     # Calculated from the body whenever the item is saved (so list views never have to load the long body).
     read_minutes = models.PositiveSmallIntegerField(null=True, blank=True, editable=False)
     duration_seconds = models.PositiveIntegerField(null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(86400)])
+    # The quality chip of a video, picked by the editor (the server cannot see inside a linked video).
+    video_quality = models.CharField(max_length=8, choices=VideoQuality.choices, blank=True, default='')
     min_level = models.CharField(max_length=16, choices=MembershipLevel.choices, default=MembershipLevel.GENERAL)
     status = models.CharField(max_length=16, choices=ContentStatus.choices, default=ContentStatus.DRAFT)
     is_pinned = models.BooleanField(default=False)
@@ -122,6 +131,8 @@ class ContentItem(models.Model):
             errors['video_url'] = 'A video needs a video link'
         if self.duration_seconds is not None and self.content_type != ContentType.VIDEO:
             errors['duration_seconds'] = 'Duration is only for video items'
+        if self.video_quality and self.content_type != ContentType.VIDEO:
+            errors['video_quality'] = 'Video quality is only for video items'
         if self.publish_at and self.expire_at and self.expire_at <= self.publish_at:
             errors['expire_at'] = 'Expiry must be after the go-live time'
         if self.status == ContentStatus.PUBLISHED and not (self.body.strip() or self.summary.strip() or self.video_url):

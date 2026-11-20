@@ -128,6 +128,57 @@ class AdminDurationTests(content_tests.ContentAdminTests):
         self.assertEqual(ContentItem.objects.get().read_minutes, 3)
 
 
+class VideoQualityTests(ContentApiBase):
+    VIDEO = {'content_type': 'video', 'video_url': 'https://www.youtube.com/watch?v=abc123'}
+
+    def test_members_see_the_chip_in_list_detail_and_dashboard(self) -> None:
+        item = self.item('Clip', video_quality='4k', **self.VIDEO)
+        client = self.as_user(self.member())
+        row = client.get('/content/get_all/').data['data']['data'][0]
+        self.assertEqual((row['videoQuality'], row['videoQualityLabel']), ('4k', '4K Ultra HD'))
+        detail = client.get(f'/content/get/?content_id={item.content_id}').data['data']
+        self.assertEqual((detail['videoQuality'], detail['videoQualityLabel']), ('4k', '4K Ultra HD'))
+        sections = {s['key']: s for s in client.get('/dashboard/get/').data['data']['sections']}
+        self.assertEqual(sections['videos']['data']['items'][0]['videoQualityLabel'], '4K Ultra HD')
+
+    def test_every_choice_has_its_label(self) -> None:
+        labels = {'sd': 'SD', 'hd': 'HD', 'full_hd': 'Full HD', '4k': '4K Ultra HD'}
+        for key, label in labels.items():
+            self.assertEqual(ContentItem(video_quality=key).get_video_quality_display(), label)
+
+    def test_it_is_optional_and_null_when_not_set(self) -> None:
+        self.item('Plain', **self.VIDEO)
+        row = self.as_user(self.member()).get('/content/get_all/').data['data']['data'][0]
+        self.assertEqual((row['videoQuality'], row['videoQualityLabel']), (None, None))
+
+    def test_only_videos_can_have_one_and_only_known_values(self) -> None:
+        for kind in ('post', 'announcement', 'tutorial', 'org_update'):
+            with self.assertRaises(ValidationError, msg=kind):
+                ContentItem(title='x', body='b', category=self.general, content_type=kind, video_quality='hd').full_clean()
+        with self.assertRaises(ValidationError):
+            ContentItem(title='x', category=self.general, summary='s', video_quality='8k', **self.VIDEO).full_clean()
+
+    def test_the_schema_lists_the_fields(self) -> None:
+        body = self.as_user(None).get('/api/schema/').content.decode()
+        self.assertIn('videoQualityLabel', body)
+
+
+class AdminVideoQualityTests(content_tests.ContentAdminTests):
+    def test_editors_pick_the_quality_in_the_admin(self) -> None:
+        self.add(self.editor, content_type='video', video_url='https://www.youtube.com/watch?v=abc123', video_quality='full_hd')
+        self.assertEqual(ContentItem.objects.get().video_quality, 'full_hd')
+
+    def test_a_quality_on_a_post_or_an_unknown_value_is_rejected(self) -> None:
+        self.add(self.editor, content_type='post', video_quality='hd')
+        self.add(self.editor, content_type='video', video_url='https://www.youtube.com/watch?v=abc123', video_quality='8k')
+        self.assertEqual(ContentItem.objects.count(), 0)
+
+
+for _name in [n for n in dir(content_tests.ContentAdminTests) if n.startswith('test_')]:
+    if _name not in AdminVideoQualityTests.__dict__:
+        setattr(AdminVideoQualityTests, _name, None)
+
+
 # Do not run the parent's own tests a second time here.
 for _name in [n for n in dir(content_tests.ContentAdminTests) if n.startswith('test_')]:
     if _name not in AdminDurationTests.__dict__:

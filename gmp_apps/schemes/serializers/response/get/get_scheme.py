@@ -18,5 +18,6 @@ class SchemeResponseGetSerializer(serializers.Serializer):
     additionalSections = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     tags = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     images = serializers.ListField(child=serializers.URLField())
+    isActive = serializers.BooleanField(help_text='true: show Active; false: show Closed (an admin switch)')
     publishedDateTime = serializers.DateTimeField(allow_null=True)
     updatedDateTime = serializers.DateTimeField()

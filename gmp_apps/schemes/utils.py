@@ -73,6 +73,7 @@ class SchemeUtils:
             'summary': SchemeUtils.summary(scheme.description or scheme.benefits),
             'imageUrl': images[0] if images else None,
             'tags': SchemeUtils.tags(scheme),
+            'isActive': scheme.is_accepting_applications,
             'updatedDateTime': scheme.updated_date_time,
         }
 
@@ -100,6 +101,7 @@ class SchemeUtils:
             'additionalSections': scheme.additional_sections,
             'tags': SchemeUtils.tags(scheme),
             'images': SchemeUtils.image_urls(scheme, base),
+            'isActive': scheme.is_accepting_applications,
             'publishedDateTime': scheme.published_date_time,
             'updatedDateTime': scheme.updated_date_time,
         }

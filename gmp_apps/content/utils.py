@@ -27,6 +27,8 @@ class ContentUtils:
             'videoUrl': item.video_url,
             'durationSeconds': item.duration_seconds,
             'readMinutes': item.read_minutes,
+            'videoQuality': item.video_quality or None,
+            'videoQualityLabel': item.get_video_quality_display() if item.video_quality else None,
             'isPinned': item.is_pinned,
             'publishedDateTime': item.publish_at,
         }

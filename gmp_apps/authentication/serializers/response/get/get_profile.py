@@ -1,6 +1,12 @@
 from rest_framework import serializers
 
 
+class ActiveApplicationsSerializer(serializers.Serializer):
+    permanent = serializers.IntegerField(help_text='Pending Permanent applications')
+    support = serializers.IntegerField(help_text='Support requests that are open or in progress')
+    total = serializers.IntegerField(help_text='permanent + support: the profile badge number')
+
+
 class ProfileResponseGetSerializer(serializers.Serializer):
     userId = serializers.IntegerField()
     membershipId = serializers.CharField()
@@ -29,3 +35,4 @@ class ProfileResponseGetSerializer(serializers.Serializer):
     declarationAccepted = serializers.BooleanField()
     declarationAcceptedAt = serializers.DateTimeField(allow_null=True)
     createdDateTime = serializers.DateTimeField()
+    activeApplications = ActiveApplicationsSerializer(required=False, help_text='Returned by profile/get only (not by login or update)')

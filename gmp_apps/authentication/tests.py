@@ -345,6 +345,26 @@ class ProfileTests(AuthBaseTestCase):
         self.assertEqual(data['referralCode'], user.referral_code)
         self.assertEqual(data['membershipLevel'], 'general')
 
+    def test_profile_active_applications_badge_counts_only_own_open_items(self) -> None:
+        from gmp_apps.contact_admin.models import ContactCategory, ContactRequest
+        from gmp_apps.membership.models import PermanentApplication
+
+        user = self.verified_user()
+        other = User.objects.create_user(full_name='Other Person', password='Sunrise#Valley42', email='other@example.com', email_verified=True)
+        category = ContactCategory.objects.first()
+        for status in ('open', 'in_progress', 'resolved', 'closed'):
+            ContactRequest.objects.create(user=user, category=category, subject='Help', description='A long enough description.', status=status)
+        ContactRequest.objects.create(user=other, category=category, subject='Help', description='A long enough description.')
+        PermanentApplication.objects.create(user=user, reason='Because of reasons.', status='pending')
+        PermanentApplication.objects.create(user=user, reason='Because of reasons.', status='rejected')
+        PermanentApplication.objects.create(user=user, reason='Because of reasons.', status='approved')
+        PermanentApplication.objects.create(user=other, reason='Because of reasons.', status='pending')
+        token = self.login()['access']
+        data = self.client.get('/auth/profile/get/', HTTP_AUTHORIZATION=f'Bearer {token}').data['data']
+        self.assertEqual(data['activeApplications'], {'permanent': 1, 'support': 2, 'total': 3})
+        updated = self.client.put('/auth/profile/update/', {'city': 'Pune'}, format='json', HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertNotIn('activeApplications', updated.data['data'])
+
     def test_update_editable_fields(self) -> None:
         self.verified_user()
         token = self.login()['access']
@@ -485,7 +505,7 @@ class AdminSetupTests(AdminManagementTestCase):
             'view_contactrequest', 'change_contactrequest', 'view_contactcategory', 'add_contactcategory',
             'change_contactcategory',
         })
-        self.assertEqual(Group.objects.count(), 12)
+        self.assertEqual(Group.objects.count(), 13)
 
     def test_admin_login_by_email_or_membership_id_staff_only(self) -> None:
         staff = self.staff('Member Managers')

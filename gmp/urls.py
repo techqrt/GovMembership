@@ -16,6 +16,7 @@ urlpatterns = [
     path('content/', include('gmp_apps.content.urls')),
     path('notifications/', include('gmp_apps.notifications.urls')),
     path('dashboard/', include('gmp_apps.dashboard.urls')),
+    path('app_text/', include('gmp_apps.app_text.urls')),
     path('chatbot/', include('gmp_apps.chatbot.urls')),
     path('member_documents/', include('gmp_apps.member_documents.urls')),
 ]

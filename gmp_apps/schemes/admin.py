@@ -177,8 +177,8 @@ class SchemeAdmin(ModelAdmin):
 
     form = SchemeForm
     inlines = [SchemeTagInline, SchemeImageInline, SchemeDocumentInline]
-    list_display = ('title', 'department', 'status', 'media_status', 'is_manual', 'locally_edited', 'last_synced_at', 'updated_date_time')
-    list_filter = ('status', MediaStatusFilter, 'is_manual', 'locally_edited')
+    list_display = ('title', 'department', 'status', 'is_accepting_applications', 'media_status', 'is_manual', 'locally_edited', 'last_synced_at', 'updated_date_time')
+    list_filter = ('status', 'is_accepting_applications', MediaStatusFilter, 'is_manual', 'locally_edited')
     search_fields = ('title', 'department', 'source_url', 'description')
     ordering = ('-updated_date_time',)
     actions = ['publish_selected', 'unpublish_selected', 'release_local_edits', 'requeue_media_selected']
@@ -187,7 +187,7 @@ class SchemeAdmin(ModelAdmin):
         ('Content', {'fields': CONTENT_FIELDS}),
         ('Source', {'fields': ('source_url', 'links_text')}),
         ('Details', {'fields': ('overview_text', 'additional_text')}),
-        ('Review', {'fields': ('status', 'is_manual', 'locally_edited', 'reviewed_by', 'published_date_time')}),
+        ('Review', {'fields': ('status', 'is_accepting_applications', 'is_manual', 'locally_edited', 'reviewed_by', 'published_date_time')}),
         ('Sync', {'fields': ('last_synced_at', 'media_synced_at', 'source_lastmod', 'created_date_time', 'updated_date_time')}),
     )
     review_fields = (

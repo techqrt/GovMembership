@@ -1,6 +1,10 @@
 from typing import Any
 
+from django.urls import reverse
+
 from gmp.config import Configurations
+from gmp_apps.member_documents.models import MemberDocument
+from gmp_apps.member_documents.models.member_document import DocumentType
 from gmp_apps.member_documents.utils import MemberDocumentUtils
 from gmp_apps.membership.models import PermanentApplication, Referral
 from gmp_apps.membership.models.referral import ReferralStatus
@@ -93,6 +97,20 @@ class MembershipUtils:
             'remainingReferrals': max(required - verified, 0),
             'canApplyForPermanent': user.membership_level == 'active' and not has_open,
             'permanentApplication': {'applicationId': latest.application_id, 'status': latest.status} if latest else None,
+        }
+
+    @staticmethod
+    def id_card_data(user: Any) -> dict[str, Any]:
+        """What a digital ID card shows, for the owner only. An explicit allow-list: no Aadhaar, PAN, email, mobile or address."""
+        photo = MemberDocument.objects.filter(user=user, document_type=DocumentType.PROFILE_PHOTO).order_by('-created_date_time', '-pk').first()
+        return {
+            'fullName': user.full_name,
+            'membershipId': user.membership_id,
+            'membershipLevel': user.membership_level,
+            'memberSince': user.created_date_time,
+            'photo': {
+                'documentId': photo.document_id, 'downloadUrl': f"{reverse('download_member_documents_document')}?document_id={photo.document_id}",
+            } if photo else None,
         }
 
     @staticmethod

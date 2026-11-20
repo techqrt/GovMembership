@@ -62,6 +62,7 @@ class Configurations:
     chatbot_max_output_tokens: int = config('CHATBOT_MAX_OUTPUT_TOKENS', default=1024, cast=int)
     chatbot_max_question_chars: int = config('CHATBOT_MAX_QUESTION_CHARS', default=500, cast=int)
     chatbot_rate: str = config('CHATBOT_RATE', default='6/min')
+    app_text_rate: str = config('APP_TEXT_RATE', default='300/hour')
     chatbot_max_per_day: int = config('CHATBOT_MAX_PER_DAY', default=60, cast=int)
     chatbot_index_max_entries: int = config('CHATBOT_INDEX_MAX_ENTRIES', default=300, cast=int)
     chatbot_log_retention_days: int = config('CHATBOT_LOG_RETENTION_DAYS', default=90, cast=int)

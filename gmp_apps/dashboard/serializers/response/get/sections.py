@@ -45,6 +45,8 @@ class ContentRow(serializers.Serializer):
     videoUrl = serializers.CharField(allow_blank=True)
     durationSeconds = serializers.IntegerField(allow_null=True, help_text='Videos only, 1 to 86400; show as mm:ss')
     readMinutes = serializers.IntegerField(allow_null=True, help_text='Minutes to read; null when the item has no body text')
+    videoQuality = serializers.CharField(allow_null=True, help_text='sd, hd, full_hd or 4k; videos only')
+    videoQualityLabel = serializers.CharField(allow_null=True, help_text='Chip text, e.g. 4K Ultra HD; hide the chip when null')
     isPinned = serializers.BooleanField()
     publishedDateTime = serializers.DateTimeField()
 
@@ -66,6 +68,7 @@ class SchemeRow(serializers.Serializer):
     summary = serializers.CharField()
     imageUrl = serializers.CharField(allow_null=True)
     tags = SchemeTag(many=True)
+    isActive = serializers.BooleanField(help_text='Active (true) or Closed (false)')
     updatedDateTime = serializers.DateTimeField()
 
 

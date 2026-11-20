@@ -12,6 +12,8 @@ class ContentItemSerializer(serializers.Serializer):
     videoUrl = serializers.CharField(allow_blank=True)
     durationSeconds = serializers.IntegerField(allow_null=True, help_text='Video length in seconds, entered by the editor.')
     readMinutes = serializers.IntegerField(allow_null=True, help_text='Estimated reading time of the body, calculated by the server; null when there is no body.')
+    videoQuality = serializers.CharField(allow_null=True, help_text='sd, hd, full_hd or 4k; videos only, null when not set.')
+    videoQualityLabel = serializers.CharField(allow_null=True, help_text='Chip text, e.g. 4K Ultra HD; null when not set.')
     isPinned = serializers.BooleanField()
     publishedDateTime = serializers.DateTimeField()
 

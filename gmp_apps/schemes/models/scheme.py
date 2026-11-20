@@ -33,6 +33,9 @@ class Scheme(models.Model):
     additional_sections = models.JSONField(default=list, blank=True)
     source_url = models.URLField(max_length=500, unique=True, null=True, blank=True)
     status = models.CharField(max_length=16, choices=SchemeStatus.choices, default=SchemeStatus.PENDING_REVIEW)
+    is_accepting_applications = models.BooleanField(
+        default=True, help_text='Shown to members as Active or Closed. Set by an admin; the sync never changes it.',
+    )
     is_manual = models.BooleanField(default=False)
     # True once an admin edits an imported scheme: the sync then leaves its content alone.
     locally_edited = models.BooleanField(default=False)
