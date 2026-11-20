@@ -15,6 +15,9 @@ class ComplaintPortal(models.Model):
     department = models.CharField(max_length=200, blank=True, default='')
     official_url = models.CharField(max_length=500, validators=[validate_portal_url])
     url_key = models.CharField(max_length=520, unique=True, editable=False)
+    # Optional direct links on the official site. The platform only sends members there: it never files or tracks anything.
+    file_complaint_url = models.CharField(max_length=500, blank=True, default='', validators=[validate_portal_url])
+    track_status_url = models.CharField(max_length=500, blank=True, default='', validators=[validate_portal_url])
     category = models.ForeignKey(PortalCategory, on_delete=models.PROTECT, related_name='portals')
     sort_order = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
@@ -29,11 +32,25 @@ class ComplaintPortal(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    OPTIONAL_LINKS = ('file_complaint_url', 'track_status_url')
+
+    def _clean_optional_links(self) -> None:
+        """Trim, and validate with the same public-URL rules as the official link when given."""
+        for name in ComplaintPortal.OPTIONAL_LINKS:
+            value = (getattr(self, name) or '').strip()
+            setattr(self, name, value)
+            if value:
+                try:
+                    validate_portal_url(value)
+                except ValidationError as error:
+                    raise ValidationError({name: error.messages})
+
     def clean(self) -> None:
         self.official_url = (self.official_url or '').strip()
         if not self.official_url:
             return
         validate_portal_url(self.official_url)
+        self._clean_optional_links()
         key = url_key(self.official_url)
         if ComplaintPortal.objects.filter(url_key=key).exclude(pk=self.pk).exists():
             raise ValidationError({'official_url': 'A portal with this URL is already listed'})
@@ -42,5 +59,6 @@ class ComplaintPortal(models.Model):
         """Validate on every save (not only through forms), so no code path can store an unsafe link."""
         self.official_url = (self.official_url or '').strip()
         validate_portal_url(self.official_url)
+        self._clean_optional_links()
         self.url_key = url_key(self.official_url)
         super().save(*args, **kwargs)

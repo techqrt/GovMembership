@@ -159,6 +159,7 @@ class MemberPortalApiTests(PortalApiBase):
         self.assertEqual(row, {
             'portalId': portal.portal_id, 'name': 'CPGRAMS', 'description': 'Central public grievances', 'department': 'DARPG',
             'categoryId': self.general.category_id, 'categoryName': 'General', 'officialUrl': 'https://pgportal.gov.in/',
+            'fileComplaintUrl': None, 'trackStatusUrl': None,
         })
         for internal in ('isActive', 'urlKey', 'sortOrder', 'createdDateTime', 'updatedDateTime'):
             self.assertNotIn(internal, str(response.data['data']))

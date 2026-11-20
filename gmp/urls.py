@@ -17,6 +17,7 @@ urlpatterns = [
     path('notifications/', include('gmp_apps.notifications.urls')),
     path('dashboard/', include('gmp_apps.dashboard.urls')),
     path('chatbot/', include('gmp_apps.chatbot.urls')),
+    path('member_documents/', include('gmp_apps.member_documents.urls')),
 ]
 
 # Development only: in production the web server (nginx etc.) serves MEDIA_ROOT at MEDIA_URL.

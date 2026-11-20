@@ -10,6 +10,8 @@ class ContentItemSerializer(serializers.Serializer):
     categoryName = serializers.CharField()
     coverImageUrl = serializers.URLField(allow_null=True)
     videoUrl = serializers.CharField(allow_blank=True)
+    durationSeconds = serializers.IntegerField(allow_null=True, help_text='Video length in seconds, entered by the editor.')
+    readMinutes = serializers.IntegerField(allow_null=True, help_text='Estimated reading time of the body, calculated by the server; null when there is no body.')
     isPinned = serializers.BooleanField()
     publishedDateTime = serializers.DateTimeField()
 

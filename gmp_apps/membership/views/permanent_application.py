@@ -13,6 +13,7 @@ from gmp_apps.membership.dataclasses.request.create.create_permanent_application
     CreatePermanentApplicationRequest,
 )
 from gmp_apps.membership.dataclasses.request.get.get_permanent_application import GetPermanentApplicationRequest
+from gmp_apps.member_documents.models import VERIFICATION_TYPES, MemberDocument
 from gmp_apps.membership.models import PermanentApplication
 from gmp_apps.membership.models.permanent_application import ApplicationStatus
 from gmp_apps.membership.utils import MembershipUtils
@@ -35,7 +36,11 @@ class MembershipPermanentApplicationView:
                 raise ValueError(Constants.application_active_only)
             if PermanentApplication.objects.filter(user=user, status=ApplicationStatus.PENDING).exists():
                 raise ValueError(Constants.application_pending_exists)
-            application = PermanentApplication.objects.create(user=user, reason=params.reason)
+            documents = MemberDocument.resolve_own(user.user_id, params.document_ids or [], VERIFICATION_TYPES, Constants.application_bad_documents)
+            application = PermanentApplication.objects.create(
+                user=user, reason=params.reason, declaration_accepted=params.declaration_accepted,
+            )
+            application.documents.set(documents)
         return Response(Utils.success_response_data(
             message=self.data_create, data=MembershipUtils.application_row(application),
         ))
@@ -43,7 +48,7 @@ class MembershipPermanentApplicationView:
     @Common().exception_handler
     def get_extract(self, params: GetPermanentApplicationRequest) -> Response:
         # Filtering by the caller makes another member's id indistinguishable from a missing one (IDOR).
-        application = PermanentApplication.objects.filter(
+        application = PermanentApplication.objects.prefetch_related('documents').filter(
             application_id=params.application_id, user_id=params.user_id,
         ).first()
         if application is None:
@@ -54,7 +59,7 @@ class MembershipPermanentApplicationView:
 
     @Common().exception_handler
     def get_all_extract(self, params: GetAll) -> Response:
-        queryset = PermanentApplication.objects.filter(user_id=params.user_id)
+        queryset = PermanentApplication.objects.filter(user_id=params.user_id).prefetch_related('documents')
         queryset = GetAllQuery.apply(
             queryset, params,
             sort_columns=MembershipUtils.application_sort_columns,

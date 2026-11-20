@@ -485,7 +485,7 @@ class AdminSetupTests(AdminManagementTestCase):
             'view_contactrequest', 'change_contactrequest', 'view_contactcategory', 'add_contactcategory',
             'change_contactcategory',
         })
-        self.assertEqual(Group.objects.count(), 10)
+        self.assertEqual(Group.objects.count(), 12)
 
     def test_admin_login_by_email_or_membership_id_staff_only(self) -> None:
         staff = self.staff('Member Managers')

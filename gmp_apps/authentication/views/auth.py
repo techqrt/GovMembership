@@ -5,6 +5,7 @@ from django.contrib.auth.hashers import check_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from django.utils.module_loading import import_string
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
@@ -57,7 +58,9 @@ class AuthenticationAuthView:
                 email=params.email,
                 mobile_number=params.mobile_number,
                 registration_ip=getattr(params, 'client_ip', None),
+                **self._profile_extras(params),
             )
+            self._store_government_ids(user, params)
             self._link_referral(user=user, referral_code=params.referral_code)
             issued = self._issue_otps_for_channels(user=user)
         for channel, destination, code in issued:
@@ -187,6 +190,24 @@ class AuthenticationAuthView:
             pass
         invite.status = 'registered'
         invite.save(update_fields=['status'])
+
+    @staticmethod
+    def _profile_extras(params: RegisterUserRequest) -> dict[str, object]:
+        """Optional plain profile fields given at registration (blank means not given)."""
+        names = ('father_name', 'profession', 'area_type', 'mandal', 'ward_village', 'house_street', 'pin_code', 'app_language')
+        extras: dict[str, object] = {name: getattr(params, name) for name in names if getattr(params, name)}
+        if params.declaration_accepted:
+            extras.update(declaration_accepted=True, declaration_accepted_at=timezone.now())
+        return extras
+
+    @staticmethod
+    def _store_government_ids(user: User, params: RegisterUserRequest) -> None:
+        columns: list[str] = []
+        for kind, value in (('aadhaar', params.aadhaar_number), ('pan', params.pan_number)):
+            if value:
+                columns += user.set_government_id(kind, value)
+        if columns:
+            user.save(update_fields=columns)
 
     @staticmethod
     def _tokens(user: User) -> dict[str, str]:

@@ -20,6 +20,9 @@ class PermanentApplication(models.Model):
     application_id = models.BigAutoField(primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='permanent_applications')
     reason = models.TextField()
+    declaration_accepted = models.BooleanField(default=False)
+    # Optional verification documents the member attached (their own police verification, character certificate, father letter).
+    documents = models.ManyToManyField('member_documents.MemberDocument', blank=True, related_name='permanent_applications')
     status = models.CharField(max_length=16, choices=ApplicationStatus.choices, default=ApplicationStatus.PENDING)
     admin_remarks = models.TextField(blank=True, default='')
     reviewed_by = models.ForeignKey(

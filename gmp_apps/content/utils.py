@@ -25,6 +25,8 @@ class ContentUtils:
             'categoryName': item.category.name,
             'coverImageUrl': (cover if cover.startswith(('http://', 'https://')) else f'{base}{cover}') if cover else None,
             'videoUrl': item.video_url,
+            'durationSeconds': item.duration_seconds,
+            'readMinutes': item.read_minutes,
             'isPinned': item.is_pinned,
             'publishedDateTime': item.publish_at,
         }

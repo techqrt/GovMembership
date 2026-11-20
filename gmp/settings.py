@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'gmp_apps.notifications',
     'gmp_apps.dashboard',
     'gmp_apps.chatbot',
+    'gmp_apps.member_documents',
 ]
 
 MIDDLEWARE = [
@@ -111,13 +112,16 @@ STATIC_URL = 'static/'
 STATIC_ROOT = Path(config('STATIC_ROOT', default=str(BASE_DIR / 'staticfiles')))  # collectstatic target; nginx serves it
 MEDIA_ROOT = Path(config('MEDIA_ROOT', default=str(BASE_DIR / 'media')))
 MEDIA_URL = '/media/'
+# Members' identity documents live OUTSIDE MEDIA_ROOT: MEDIA_URL is public, these files are not.
+PRIVATE_MEDIA_ROOT = Path(Configurations.private_media_root or str(BASE_DIR / 'private_media'))
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['gmp_apps.authentication.jwt.VersionedJWTAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_THROTTLE_RATES': {'auth': Configurations.auth_throttle_rate, 'chatbot': Configurations.chatbot_rate},
+    'DEFAULT_THROTTLE_RATES': {'auth': Configurations.auth_throttle_rate, 'chatbot': Configurations.chatbot_rate,
+                               'member_document_upload': Configurations.member_document_upload_rate},
     'EXCEPTION_HANDLER': 'gmp_apps.common.exception_handler.api_exception_handler',
 }
 

@@ -1,10 +1,15 @@
+import math
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q, QuerySet
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.utils import timezone
+
+from gmp.config import Configurations
 
 from gmp_apps.authentication.models.user import MembershipLevel
 from gmp_apps.common.media import ALLOWED_TYPES_TEXT, sha256_of, sniff_image_extension
@@ -54,6 +59,10 @@ class ContentItem(models.Model):
     category = models.ForeignKey(ContentCategory, on_delete=models.PROTECT, related_name='items')
     cover_image = models.FileField(upload_to=cover_upload_path, validators=[validate_cover_upload], blank=True, max_length=255)
     video_url = models.CharField(max_length=500, blank=True, default='', validators=[validate_video_url])
+    # Length of a video item in seconds, typed by the editor (videos are only linked, never hosted here).
+    # Calculated from the body whenever the item is saved (so list views never have to load the long body).
+    read_minutes = models.PositiveSmallIntegerField(null=True, blank=True, editable=False)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(86400)])
     min_level = models.CharField(max_length=16, choices=MembershipLevel.choices, default=MembershipLevel.GENERAL)
     status = models.CharField(max_length=16, choices=ContentStatus.choices, default=ContentStatus.DRAFT)
     is_pinned = models.BooleanField(default=False)
@@ -99,12 +108,20 @@ class ContentItem(models.Model):
             return 'expired'
         return 'live'
 
+    @staticmethod
+    def estimate_read_minutes(body: str) -> int | None:
+        """Minutes to read `body` (words / words per minute, at least 1); None when there is no text."""
+        words = len(body.split())
+        return max(1, math.ceil(words / Configurations.content_read_words_per_minute)) if words else None
+
     # ---------- validation ----------
 
     def clean(self) -> None:
         errors: dict[str, str] = {}
         if self.content_type == ContentType.VIDEO and not self.video_url:
             errors['video_url'] = 'A video needs a video link'
+        if self.duration_seconds is not None and self.content_type != ContentType.VIDEO:
+            errors['duration_seconds'] = 'Duration is only for video items'
         if self.publish_at and self.expire_at and self.expire_at <= self.publish_at:
             errors['expire_at'] = 'Expiry must be after the go-live time'
         if self.status == ContentStatus.PUBLISHED and not (self.body.strip() or self.summary.strip() or self.video_url):
@@ -122,6 +139,7 @@ class ContentItem(models.Model):
         replaced file is removed."""
         if self.status == ContentStatus.PUBLISHED and self.publish_at is None:
             self.publish_at = timezone.now()
+        self.read_minutes = ContentItem.estimate_read_minutes(self.body)
         old_name = ''
         if self._new_cover():
             self.cover_image.seek(0)

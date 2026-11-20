@@ -13,6 +13,11 @@ class Configurations:
     # Mobile apps do not use CORS. Example: CORS_ALLOWED_ORIGINS=https://members.example.gov.in
     cors_allowed_origins: list[str] = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 
+    # Fernet keys (url-safe base64, 32 bytes) that encrypt Aadhaar/PAN at rest. The FIRST key encrypts, every key can
+    # decrypt, so rotation = put a new key first. Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Empty is allowed only for local development (a key is derived from SECRET_KEY then).
+    field_encryption_keys: list[str] = config('FIELD_ENCRYPTION_KEYS', default='', cast=Csv())
+
     db_engine: str = config('DB_ENGINE', default='postgresql')
     db_name: str = config('DB_NAME', default='gmp')
     db_user: str = config('DB_USER', default='')
@@ -41,6 +46,12 @@ class Configurations:
     scheme_image_max_bytes: int = config('SCHEME_IMAGE_MAX_BYTES', default=5_000_000, cast=int)
     scheme_document_max_bytes: int = config('SCHEME_DOCUMENT_MAX_BYTES', default=15_000_000, cast=int)
     portal_url_max_length: int = 500
+    private_media_root: str = config('PRIVATE_MEDIA_ROOT', default='')   # empty = <backend>/private_media (never served publicly)
+    member_document_max_bytes: int = config('MEMBER_DOCUMENT_MAX_BYTES', default=10_000_000, cast=int)
+    member_document_max_per_member: int = config('MEMBER_DOCUMENT_MAX_PER_MEMBER', default=30, cast=int)
+    member_document_max_contact_attachments: int = config('MEMBER_DOCUMENT_MAX_CONTACT_ATTACHMENTS', default=15, cast=int)
+    member_document_max_per_type: int = config('MEMBER_DOCUMENT_MAX_PER_TYPE', default=3, cast=int)
+    member_document_upload_rate: str = config('MEMBER_DOCUMENT_UPLOAD_RATE', default='20/hour')
     dashboard_items_per_section: int = config('DASHBOARD_ITEMS_PER_SECTION', default=5, cast=int)
     dashboard_support_items: int = config('DASHBOARD_SUPPORT_ITEMS', default=3, cast=int)
     chatbot_enabled: bool = config('CHATBOT_ENABLED', default=False, cast=bool)
@@ -55,6 +66,7 @@ class Configurations:
     chatbot_index_max_entries: int = config('CHATBOT_INDEX_MAX_ENTRIES', default=300, cast=int)
     chatbot_log_retention_days: int = config('CHATBOT_LOG_RETENTION_DAYS', default=90, cast=int)
     content_video_hosts: list[str] = config('CONTENT_VIDEO_HOSTS', default='youtube.com,youtu.be,vimeo.com', cast=Csv())
+    content_read_words_per_minute: int = config('CONTENT_READ_WORDS_PER_MINUTE', default=200, cast=int)
     content_image_max_bytes: int = config('CONTENT_IMAGE_MAX_BYTES', default=5_000_000, cast=int)
     referral_max_per_day: int = config('REFERRAL_MAX_PER_DAY', default=10, cast=int)
 

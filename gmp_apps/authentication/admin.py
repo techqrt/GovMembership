@@ -3,12 +3,18 @@ from typing import Any
 from django import forms
 from django.contrib import admin, messages
 from django.db.models import Count, Q, QuerySet
-from django.http import HttpRequest
+from django.core.exceptions import ImproperlyConfigured
+from django.http import Http404, HttpRequest, HttpResponse
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
+from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from unfold.widgets import UnfoldAdminTextareaWidget
 
-from gmp_apps.authentication.models import Otp, User
+from gmp_apps.authentication.identity import KINDS, IdentityUtils
+from gmp_apps.authentication.models import GovernmentIdAccessLog, Otp, User
+from gmp_apps.common import field_encryption
 from gmp_apps.common.exceptions.errors import ForbiddenError
 
 # Editable only by a superuser: who is staff, what role, which permission groups.
@@ -58,6 +64,11 @@ class UserAdmin(ModelAdmin):
             'membership_id', 'full_name', 'email', 'mobile_number', 'email_verified', 'mobile_verified',
             'date_of_birth', 'gender', 'state', 'city',
         )}),
+        ('Profile details', {'fields': (
+            'father_name', 'profession', 'area_type', 'mandal', 'ward_village', 'house_street', 'pin_code', 'app_language',
+            'declaration_accepted', 'declaration_accepted_at',
+        )}),
+        ('Government IDs (masked)', {'fields': ('aadhaar_masked', 'pan_masked', 'full_ids_link')}),
         ('Membership', {'fields': ('membership_level', 'referral_code', 'verified_referrals', 'referred_by')}),
         ('Status', {'fields': ('is_active', 'suspended_reason', 'suspended_at')}),
         ('Access (superuser only)', {'fields': ACCESS_FIELDS}),
@@ -65,7 +76,8 @@ class UserAdmin(ModelAdmin):
     )
     always_readonly = (
         'membership_id', 'full_name', 'email', 'mobile_number', 'email_verified', 'mobile_verified', 'date_of_birth',
-        'gender', 'state', 'city', 'membership_level', 'referral_code', 'verified_referrals', 'referred_by',
+        'gender', 'state', 'city', 'father_name', 'profession', 'area_type', 'mandal', 'ward_village', 'house_street', 'pin_code',
+        'app_language', 'declaration_accepted', 'declaration_accepted_at', 'aadhaar_masked', 'pan_masked', 'full_ids_link', 'membership_level', 'referral_code', 'verified_referrals', 'referred_by',
         'suspended_at', 'registration_ip', 'last_login', 'created_date_time',
     )
 
@@ -118,6 +130,72 @@ class UserAdmin(ModelAdmin):
                 setattr(fresh, field, getattr(obj, field))
             fresh.save(update_fields=writable)
 
+    # ---- government IDs: masked everywhere; full numbers only on the logged reveal page ----
+
+    @display(description='Aadhaar (masked)')
+    def aadhaar_masked(self, obj: User) -> str:
+        return obj.masked_id('aadhaar') or '-'
+
+    @display(description='PAN (masked)')
+    def pan_masked(self, obj: User) -> str:
+        return obj.masked_id('pan') or '-'
+
+    @display(description='Full numbers')
+    def full_ids_link(self, obj: User) -> str:
+        if not obj.pk or not (obj.aadhaar_last4 or obj.pan_last4):
+            return '-'
+        return format_html('<a href="{}">Show full numbers (recorded)</a>', reverse('admin:authentication_user_government_ids', args=[obj.pk]))
+
+    def get_urls(self) -> list:
+        extra = [path('<int:object_id>/government_ids/', self.admin_site.admin_view(self.government_ids_view), name='authentication_user_government_ids')]
+        return extra + super().get_urls()
+
+    def government_ids_view(self, request: HttpRequest, object_id: int) -> HttpResponse:
+        """Confirm first (a link click must not reveal anything), then show and LOG each number read."""
+        if not request.user.has_perm('authentication.view_government_ids'):
+            return HttpResponse('You do not have permission to see full ID numbers.', status=403)
+        member = User.objects.filter(pk=object_id).first()
+        if member is None:
+            raise Http404('No such member')
+        context = {
+            **self.admin_site.each_context(request), 'title': 'Full ID numbers', 'member': member, 'revealed': False,
+            'back_url': reverse('admin:authentication_user_change', args=[member.pk]),
+        }
+        if request.method == 'POST':
+            values: dict[str, str | None] = {}
+            for kind in KINDS:
+                try:
+                    values[kind] = member.reveal_government_id(kind)
+                except (field_encryption.DecryptionError, ImproperlyConfigured):
+                    values[kind] = None
+                    messages.error(request, f'The stored {kind} number cannot be decrypted with the configured keys.')
+                if values[kind]:
+                    GovernmentIdAccessLog.objects.create(admin=request.user, member=member, action=f'reveal_{kind}')
+            context.update(revealed=True, aadhaar=values['aadhaar'], pan=values['pan'])
+        response = TemplateResponse(request, 'admin/authentication/government_ids.html', context)
+        response['Cache-Control'] = 'no-store'
+        return response
+
+    def get_search_results(self, request: HttpRequest, queryset: QuerySet, search_term: str) -> tuple[QuerySet, bool]:
+        """Staff allowed to see full IDs can also find a member by typing a full Aadhaar or PAN (exact match
+        on the keyed hash). Each such search is logged, because it reveals whether the number exists."""
+        results, may_have_duplicates = super().get_search_results(request, queryset, search_term)
+        if not search_term or not request.user.has_perm('authentication.view_government_ids'):
+            return results, may_have_duplicates
+        matches = Q()
+        for kind in KINDS:
+            normalized = IdentityUtils.normalize(kind, search_term)
+            if not IdentityUtils.is_valid(kind, normalized):
+                continue
+            try:
+                matches |= Q(**{f'{kind}_hash': field_encryption.blind_index(kind, normalized)})
+            except ImproperlyConfigured:
+                continue
+            GovernmentIdAccessLog.objects.create(admin=request.user, action=f'search_{kind}')
+        if matches:
+            results = results | queryset.filter(matches)
+        return results, may_have_duplicates
+
     @display(description='Qualifying referrals', ordering='verified_count')
     def verified_referrals(self, obj: User) -> int:
         return obj.verified_count
@@ -126,6 +204,25 @@ class UserAdmin(ModelAdmin):
     def referred_by(self, obj: User) -> str:
         record = getattr(obj, 'referral_received', None)
         return f'{record.referrer.full_name} ({record.referrer.membership_id})' if record else '-'
+
+
+@admin.register(GovernmentIdAccessLog)
+class GovernmentIdAccessLogAdmin(ModelAdmin):
+    """Who read or searched full Aadhaar/PAN numbers, and when. Read-only audit trail (superusers)."""
+
+    list_display = ('log_id', 'created_date_time', 'admin', 'member', 'action')
+    list_filter = ('action',)
+    search_fields = ('admin__membership_id', 'member__membership_id')
+    list_select_related = ('admin', 'member')
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: GovernmentIdAccessLog | None = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: GovernmentIdAccessLog | None = None) -> bool:
+        return False
 
 
 @admin.register(Otp)

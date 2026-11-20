@@ -22,6 +22,16 @@ class AuthenticationUtils:
         'gender': 'gender',
         'state': 'state',
         'city': 'city',
+        'father_name': 'fatherName',
+        'profession': 'profession',
+        'area_type': 'areaType',
+        'mandal': 'mandal',
+        'ward_village': 'wardVillage',
+        'house_street': 'houseStreet',
+        'pin_code': 'pinCode',
+        'app_language': 'appLanguage',
+        'declaration_accepted': 'declarationAccepted',
+        'declaration_accepted_at': 'declarationAcceptedAt',
         'created_date_time': 'createdDateTime',
     }
     reverse_mapper: dict[str, str] = {camel: snake for snake, camel in profile_mapper.items()}
@@ -62,4 +72,7 @@ class AuthenticationUtils:
     def profile_data(user: Any) -> dict[str, Any]:
         """camelCase profile payload built from an explicit allow-list of columns."""
         row = {column: getattr(user, column) for column in AuthenticationUtils.profile_mapper}
-        return AuthenticationUtils.to_camel(row)
+        data = AuthenticationUtils.to_camel(row)
+        data['aadhaarNumber'] = user.masked_id('aadhaar')   # masked only: the full numbers are admin-reveal only
+        data['panNumber'] = user.masked_id('pan')
+        return data

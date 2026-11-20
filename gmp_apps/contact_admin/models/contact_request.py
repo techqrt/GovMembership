@@ -19,6 +19,12 @@ class RequestStatus(models.TextChoices):
     CLOSED = 'closed', 'Closed'
 
 
+class RequestPriority(models.TextChoices):
+    LOW = 'low', 'Low'
+    NORMAL = 'normal', 'Normal'
+    HIGH = 'high', 'High'
+
+
 OPEN_STATUSES = (RequestStatus.OPEN, RequestStatus.IN_PROGRESS)
 REPLY_REQUIRED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED)
 
@@ -30,6 +36,9 @@ class ContactRequest(models.Model):
     subject = models.CharField(max_length=200)
     description = models.TextField(max_length=5000)
     status = models.CharField(max_length=16, choices=RequestStatus.choices, default=RequestStatus.OPEN)
+    # The member's own hint about urgency. It never changes how the request is handled.
+    priority = models.CharField(max_length=8, choices=RequestPriority.choices, default=RequestPriority.NORMAL)
+    attachments = models.ManyToManyField('member_documents.MemberDocument', blank=True, related_name='contact_requests')
     admin_reply = models.TextField(blank=True, default='')
     replied_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='contact_requests_answered',
@@ -45,14 +54,14 @@ class ContactRequest(models.Model):
         return f'#{self.request_id} {self.subject}'
 
     @staticmethod
-    def create(user: User, category: ContactCategory, subject: str, description: str) -> 'ContactRequest':
+    def create(user: User, category: ContactCategory, subject: str, description: str, priority: str = RequestPriority.NORMAL) -> 'ContactRequest':
         """Abuse limits: a cap on unresolved requests and a daily cap per member."""
         if ContactRequest.objects.filter(user=user, status__in=OPEN_STATUSES).count() >= Configurations.contact_max_open_requests:
             raise ValueError(Constants.contact_too_many_open)
         since = timezone.now() - timedelta(days=1)
         if ContactRequest.objects.filter(user=user, created_date_time__gte=since).count() >= Configurations.contact_max_per_day:
             raise ValueError(Constants.contact_daily_limit)
-        return ContactRequest.objects.create(user=user, category=category, subject=subject, description=description)
+        return ContactRequest.objects.create(user=user, category=category, subject=subject, description=description, priority=priority)
 
     @staticmethod
     def check_response(current_status: str, new_status: str, reply: str) -> None:

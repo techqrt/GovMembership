@@ -1,6 +1,7 @@
 from typing import Any
 
 from gmp.config import Configurations
+from gmp_apps.member_documents.utils import MemberDocumentUtils
 from gmp_apps.membership.models import PermanentApplication, Referral
 from gmp_apps.membership.models.referral import ReferralStatus
 
@@ -66,9 +67,10 @@ class MembershipUtils:
 
     @staticmethod
     def application_row(application: PermanentApplication) -> dict[str, Any]:
-        return {
-            camel: getattr(application, column) for column, camel in MembershipUtils.application_mapper.items()
-        }
+        row = {camel: getattr(application, column) for column, camel in MembershipUtils.application_mapper.items()}
+        row['declarationAccepted'] = application.declaration_accepted
+        row['documents'] = [MemberDocumentUtils.document_row(d) for d in application.documents.all()]   # prefetched by the callers
+        return row
 
     # ---------- progress ----------
 

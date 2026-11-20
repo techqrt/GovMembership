@@ -2,7 +2,9 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.utils import timezone
 
+from gmp_apps.authentication.identity import KINDS, IdentityUtils
 from gmp_apps.authentication.utils import AuthenticationUtils
+from gmp_apps.common import field_encryption
 from gmp_apps.common.exceptions.errors import ForbiddenError
 
 
@@ -21,6 +23,11 @@ class Gender(models.TextChoices):
     MALE = 'male', 'Male'
     FEMALE = 'female', 'Female'
     OTHER = 'other', 'Other'
+
+
+class AreaType(models.TextChoices):
+    URBAN = 'urban', 'Urban'
+    RURAL = 'rural', 'Rural'
 
 
 class UserManager(BaseUserManager):
@@ -73,6 +80,24 @@ class User(AbstractBaseUser, PermissionsMixin):
     gender = models.CharField(max_length=8, choices=Gender.choices, blank=True, default='')
     state = models.CharField(max_length=100, blank=True, default='')
     city = models.CharField(max_length=100, blank=True, default='')
+    father_name = models.CharField(max_length=150, blank=True, default='')
+    profession = models.CharField(max_length=100, blank=True, default='')
+    area_type = models.CharField(max_length=8, choices=AreaType.choices, blank=True, default='')
+    mandal = models.CharField(max_length=100, blank=True, default='')
+    ward_village = models.CharField(max_length=100, blank=True, default='')
+    house_street = models.CharField(max_length=200, blank=True, default='')
+    pin_code = models.CharField(max_length=6, blank=True, default='')
+    app_language = models.CharField(max_length=10, blank=True, default='')
+    declaration_accepted = models.BooleanField(default=False)
+    declaration_accepted_at = models.DateTimeField(null=True, blank=True)
+    # Government ID numbers: ciphertext + last 4 characters (for the mask) + keyed hash (exact-match lookup).
+    # Never editable through a form and never returned by any API except as a mask.
+    aadhaar_encrypted = models.TextField(blank=True, default='', editable=False)
+    aadhaar_last4 = models.CharField(max_length=4, blank=True, default='', editable=False)
+    aadhaar_hash = models.CharField(max_length=64, blank=True, default='', editable=False, db_index=True)
+    pan_encrypted = models.TextField(blank=True, default='', editable=False)
+    pan_last4 = models.CharField(max_length=4, blank=True, default='', editable=False)
+    pan_hash = models.CharField(max_length=64, blank=True, default='', editable=False, db_index=True)
     registration_ip = models.GenericIPAddressField(null=True, blank=True, editable=False)
     is_active = models.BooleanField(default=True)
     suspended_reason = models.TextField(blank=True, default='')
@@ -89,10 +114,44 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'user'
-        permissions = [('suspend_member', 'Can suspend or reactivate members')]
+        permissions = [
+            ('suspend_member', 'Can suspend or reactivate members'),
+            ('view_government_ids', 'Can see members\' full Aadhaar and PAN numbers'),
+        ]
 
     def __str__(self) -> str:
         return f'{self.membership_id} ({self.full_name})'
+
+    @staticmethod
+    def id_columns(kind: str) -> tuple[str, str, str]:
+        if kind not in KINDS:
+            raise ValueError('Unknown ID kind')
+        return f'{kind}_encrypted', f'{kind}_last4', f'{kind}_hash'
+
+    def set_government_id(self, kind: str, value: str | None) -> list[str]:
+        """Store (encrypted) or clear an Aadhaar/PAN number. `value` must already be validated.
+        Returns the column names to include in save(update_fields=...)."""
+        encrypted, last4, digest = User.id_columns(kind)
+        normalized = IdentityUtils.normalize(kind, value or '')
+        if not normalized:
+            setattr(self, encrypted, ''), setattr(self, last4, ''), setattr(self, digest, '')
+        else:
+            if not IdentityUtils.is_valid(kind, normalized):
+                raise ValueError(f'Invalid {kind} number')
+            setattr(self, encrypted, field_encryption.encrypt(normalized))
+            setattr(self, last4, normalized[-4:])
+            setattr(self, digest, field_encryption.blind_index(kind, normalized))
+        return [encrypted, last4, digest]
+
+    def masked_id(self, kind: str) -> str | None:
+        """What members and the API see: all but the last 4 characters hidden, or None when not given."""
+        last4 = getattr(self, User.id_columns(kind)[1])
+        return IdentityUtils.mask(kind, last4) if last4 else None
+
+    def reveal_government_id(self, kind: str) -> str | None:
+        """The full number. Only for the admin reveal page, which logs every use."""
+        token = getattr(self, User.id_columns(kind)[0])
+        return field_encryption.decrypt(token) if token else None
 
     @staticmethod
     def find_by_identifier(identifier: str) -> 'User | None':

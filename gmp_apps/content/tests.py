@@ -298,7 +298,7 @@ class MemberContentApiTests(ContentApiBase):
         listing = client.get('/content/get_all/')
         detail = client.get(f'/content/get/?content_id={item.content_id}')
         row = listing.data['data']['data'][0]
-        self.assertEqual(set(row), {'contentId', 'type', 'title', 'summary', 'categoryId', 'categoryName', 'coverImageUrl', 'videoUrl', 'isPinned', 'publishedDateTime'})
+        self.assertEqual(set(row), {'contentId', 'type', 'title', 'summary', 'categoryId', 'categoryName', 'coverImageUrl', 'videoUrl', 'durationSeconds', 'readMinutes', 'isPinned', 'publishedDateTime'})
         self.assertEqual(set(detail.data['data']), set(row) | {'body'})
         self.assertNotIn('body', row)
         self.assertEqual((detail.data['data']['body'], row['isPinned']), ('Body of Shape', True))

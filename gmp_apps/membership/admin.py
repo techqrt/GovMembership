@@ -11,6 +11,7 @@ from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextareaWidget
 from gmp.config import Configurations
 from gmp.constants import Constants
 from gmp_apps.common.exceptions.errors import NotFoundError
+from gmp_apps.member_documents.admin_helpers import DOWNLOAD_PERMISSION, document_links
 from gmp_apps.membership.models import PermanentApplication, Referral, ReferralInvite
 from gmp_apps.membership.models.permanent_application import ApplicationStatus
 from gmp_apps.membership.models.referral import ReferralStatus
@@ -126,13 +127,24 @@ class PermanentApplicationAdmin(ReviewAdminMixin, ModelAdmin):
     search_fields = ('user__membership_id', 'user__full_name', 'user__email', 'user__mobile_number')
     list_select_related = ('user',)
     fields = (
-        'user', 'member_level', 'verified_referrals', 'reason', 'status', 'reviewed_by', 'reviewed_date_time',
-        'created_date_time', 'decision', 'admin_remarks',
+        'user', 'member_level', 'verified_referrals', 'reason', 'declaration_accepted', 'attached_documents', 'status',
+        'reviewed_by', 'reviewed_date_time', 'created_date_time', 'decision', 'admin_remarks',
     )
     readonly_fields = (
-        'user', 'member_level', 'verified_referrals', 'reason', 'status', 'reviewed_by', 'reviewed_date_time',
-        'created_date_time',
+        'user', 'member_level', 'verified_referrals', 'reason', 'declaration_accepted', 'attached_documents', 'status',
+        'reviewed_by', 'reviewed_date_time', 'created_date_time',
     )
+
+    def get_object(self, request: HttpRequest, object_id: str, from_field: str | None = None) -> PermanentApplication | None:
+        obj = super().get_object(request, object_id, from_field)
+        if obj is not None:   # the readonly field below has no request, so carry the permission on the object
+            obj.viewer_can_download = request.user.has_perm(DOWNLOAD_PERMISSION)
+        return obj
+
+    @display(description='Verification documents')
+    def attached_documents(self, obj: PermanentApplication) -> str:
+        """The member's attached documents. Downloading needs the document permission (and is logged there)."""
+        return document_links(obj.documents.all() if obj.pk else [], getattr(obj, 'viewer_can_download', False))
 
     def get_queryset(self, request: HttpRequest) -> QuerySet:
         qualifying = Count(

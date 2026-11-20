@@ -56,6 +56,16 @@ GROUPS: dict[str, list[tuple[str, str]]] = {
         ('chatbot', 'approve_knowledgeentry'),
         ('chatbot', 'view_chatlog'),
     ],
+    # Read members' full Aadhaar and PAN numbers (every read is logged). Cannot change members.
+    'Identity Reviewers': [
+        ('authentication', 'view_user'),
+        ('authentication', 'view_government_ids'),
+    ],
+    # Look at members' uploaded documents and download them (every download is logged). Cannot change or delete anything.
+    'Document Reviewers': [
+        ('member_documents', 'view_memberdocument'),
+        ('member_documents', 'download_memberdocument'),
+    ],
     # Decide which dashboard sections members see, in what order and from which level. Nothing else.
     'Dashboard Managers': [
         ('dashboard', 'view_dashboardsection'),

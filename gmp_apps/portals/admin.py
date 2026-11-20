@@ -15,10 +15,10 @@ class ComplaintPortalAdmin(ModelAdmin):
 
     list_display = ('name', 'department', 'category', 'visit', 'is_active', 'sort_order', 'updated_date_time')
     list_filter = ('is_active', 'category')
-    search_fields = ('name', 'description', 'department', 'official_url', 'category__name')
+    search_fields = ('name', 'description', 'department', 'official_url', 'file_complaint_url', 'track_status_url', 'category__name')
     list_select_related = ('category',)
     ordering = ('category__sort_order', 'category__name', 'sort_order', 'name')
-    fields = ('name', 'category', 'department', 'description', 'official_url', 'sort_order', 'is_active')
+    fields = ('name', 'category', 'department', 'description', 'official_url', 'file_complaint_url', 'track_status_url', 'sort_order', 'is_active')
     actions = ['activate_portals', 'deactivate_portals']
 
     @display(description='Official URL')

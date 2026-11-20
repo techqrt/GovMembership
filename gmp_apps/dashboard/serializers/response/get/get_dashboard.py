@@ -1,11 +1,13 @@
+from drf_spectacular.utils import PolymorphicProxySerializer
 from rest_framework import serializers
 
-
-class DashboardSectionSerializer(serializers.Serializer):
-    key = serializers.CharField()
-    title = serializers.CharField()
-    data = serializers.DictField()
+from gmp_apps.dashboard.serializers.response.get.sections import SECTION_SERIALIZERS
 
 
 class DashboardResponseGetSerializer(serializers.Serializer):
-    sections = DashboardSectionSerializer(many=True)
+    sections = PolymorphicProxySerializer(
+        component_name='DashboardSection',
+        serializers=SECTION_SERIALIZERS,
+        resource_type_field_name='key',
+        many=True,
+    )

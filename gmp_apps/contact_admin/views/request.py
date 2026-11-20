@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework.response import Response
 
 from gmp.constants import Constants
@@ -11,6 +12,7 @@ from gmp_apps.contact_admin.dataclasses.request.create.create_request import Cre
 from gmp_apps.contact_admin.dataclasses.request.get.get_request import GetRequestRequest
 from gmp_apps.contact_admin.models import ContactCategory, ContactRequest
 from gmp_apps.contact_admin.utils import ContactAdminUtils
+from gmp_apps.member_documents.models import DocumentType, MemberDocument
 
 
 class ContactAdminRequestView:
@@ -24,13 +26,20 @@ class ContactAdminRequestView:
         fields cannot be set by a member."""
         user = User.objects.get(user_id=params.user_id)
         category = ContactCategory.objects.get(category_id=params.category_id, is_active=True)
-        item = ContactRequest.create(user=user, category=category, subject=params.subject.strip(), description=params.description.strip())
+        with transaction.atomic():
+            attachments = MemberDocument.resolve_own(
+                user.user_id, params.attachment_ids or [], (DocumentType.CONTACT_ATTACHMENT,), Constants.contact_bad_attachments,
+            )
+            item = ContactRequest.create(
+                user=user, category=category, subject=params.subject.strip(), description=params.description.strip(), priority=params.priority,
+            )
+            item.attachments.set(attachments)
         return Response(Utils.success_response_data(message=self.data_create, data=ContactAdminUtils.request_row(item)))
 
     @Common().exception_handler
     def get_extract(self, params: GetRequestRequest) -> Response:
         # Filtering by the caller makes another member's id look like a missing one (IDOR).
-        item = ContactRequest.objects.select_related('category').filter(
+        item = ContactRequest.objects.select_related('category').prefetch_related('attachments').filter(
             request_id=params.request_id, user_id=params.user_id,
         ).first()
         if item is None:
@@ -39,7 +48,7 @@ class ContactAdminRequestView:
 
     @Common().exception_handler
     def get_all_extract(self, params: GetAll) -> Response:
-        queryset = ContactRequest.objects.filter(user_id=params.user_id).select_related('category')
+        queryset = ContactRequest.objects.filter(user_id=params.user_id).select_related('category').prefetch_related('attachments')
         queryset = GetAllQuery.apply(
             queryset, params,
             sort_columns=ContactAdminUtils.request_sort_columns,

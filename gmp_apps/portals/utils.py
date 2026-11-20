@@ -22,4 +22,6 @@ class PortalUtils:
             'categoryId': portal.category_id,
             'categoryName': portal.category.name,
             'officialUrl': portal.official_url,
+            'fileComplaintUrl': portal.file_complaint_url or None,
+            'trackStatusUrl': portal.track_status_url or None,
         }

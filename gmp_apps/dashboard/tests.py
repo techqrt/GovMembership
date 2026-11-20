@@ -25,6 +25,7 @@ from gmp_apps.dashboard import builders
 from gmp_apps.dashboard.models import DashboardSection
 from gmp_apps.membership.models import PermanentApplication, Referral
 from gmp_apps.notifications.models import Notification
+from gmp_apps.notifications.models.notification import NotificationKind
 from gmp_apps.portals.models import ComplaintPortal, PortalCategory
 from gmp_apps.schemes.models import Scheme, SchemeImage
 
@@ -365,3 +366,47 @@ class SwaggerTests(DashboardBase):
         body = APIClient().get('/api/schema/').content.decode()
         for path in ('/dashboard/get/', '/notifications/get_all/', '/notifications/unread_count/', '/notifications/mark_read/'):
             self.assertIn(path, body)
+
+
+class DocumentedShapeTests(DashboardBase):
+    """The Swagger section formats are documentation only, so this keeps them equal to what the builders return."""
+
+    def assert_same_shape(self, serializer, data, path: str) -> None:
+        from rest_framework import serializers
+
+        if isinstance(serializer, serializers.ListSerializer):
+            for index, item in enumerate(data):
+                self.assert_same_shape(serializer.child, item, f'{path}[{index}]')
+            return
+        self.assertIsInstance(data, dict, path)
+        self.assertEqual(set(serializer.fields), set(data), path)
+        for name, field in serializer.fields.items():
+            if isinstance(field, (serializers.Serializer, serializers.ListSerializer)) and data[name] is not None:
+                self.assert_same_shape(field, data[name], f'{path}.{name}')
+
+    def test_every_documented_section_matches_the_real_output_including_rows(self) -> None:
+        from gmp_apps.dashboard.serializers.response.get.sections import SECTION_DATA
+
+        member = self.member('active')
+        self.content('Notice', 'announcement')
+        self.content('Story', 'post')
+        self.content('Clip', 'video', video_url='https://www.youtube.com/watch?v=abc', duration_seconds=90)
+        self.content('Guide', 'tutorial')
+        self.content('Update', 'org_update')
+        self.scheme()
+        self.portal('Portal', file_complaint_url='https://portal.gov.in/file')
+        self.request(member)
+        Notification.send(member.user_id, NotificationKind.values[0], 'Hi', 'Hello')
+        PermanentApplication.objects.create(user=member, reason='Because of reasons.')
+        sections = self.dashboard(member)
+        self.assertEqual(set(SECTION_DATA), set(ALL_KEYS))
+        for key, serializer in SECTION_DATA.items():
+            self.assert_same_shape(serializer(), sections[key]['data'], key)
+        self.assertTrue(sections['portals']['data']['items'] and sections['membership']['data']['permanentApplication'])
+
+    def test_swagger_lists_all_twelve_section_formats_keyed_by_section_key(self) -> None:
+        schema = APIClient().get('/api/schema/?format=json').json()['components']['schemas']
+        mapping = schema['DashboardSection']['discriminator']['mapping']
+        self.assertEqual(set(mapping), set(ALL_KEYS))
+        self.assertIn('fileComplaintUrl', schema['PortalRow']['properties'])
+        self.assertIn('readMinutes', schema['ContentRow']['properties'])

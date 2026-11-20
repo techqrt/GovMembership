@@ -9,3 +9,5 @@ class PortalResponseGetSerializer(serializers.Serializer):
     categoryId = serializers.IntegerField()
     categoryName = serializers.CharField()
     officialUrl = serializers.CharField()
+    fileComplaintUrl = serializers.CharField(allow_null=True, help_text='Optional direct link on the official site. The platform only redirects out.')
+    trackStatusUrl = serializers.CharField(allow_null=True, help_text='Optional direct link on the official site. The platform only redirects out.')

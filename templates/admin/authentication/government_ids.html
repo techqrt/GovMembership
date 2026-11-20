@@ -1,0 +1,27 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n %}
+
+{% block content %}
+    <div class="max-w-xl border border-base-200 rounded-default p-6 bg-white dark:bg-base-900 dark:border-base-800">
+        <h2 class="text-lg font-semibold mb-2">Full Aadhaar and PAN: {{ member.membership_id }} ({{ member.full_name }})</h2>
+        {% if revealed %}
+            <dl class="mb-4">
+                <dt class="text-sm text-font-subtle-light dark:text-font-subtle-dark">Aadhaar number</dt>
+                <dd class="text-lg font-mono mb-3">{{ aadhaar|default:"not given" }}</dd>
+                <dt class="text-sm text-font-subtle-light dark:text-font-subtle-dark">PAN number</dt>
+                <dd class="text-lg font-mono mb-3">{{ pan|default:"not given" }}</dd>
+            </dl>
+            <p class="mb-4 text-sm">This view was recorded in the access log. Do not copy these numbers into other systems.</p>
+            <a href="{{ back_url }}">Back to the member</a>
+        {% else %}
+            <p class="mb-2">You are about to read this member's full government ID numbers.</p>
+            <p class="mb-4 text-sm text-font-subtle-light dark:text-font-subtle-dark">Your name, the member and the time will be recorded in the access log. Continue only if you need them for your work.</p>
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="bg-primary-600 text-white font-medium px-4 py-2 rounded-default">Show full numbers</button>
+                <a href="{{ back_url }}" class="ml-4">Cancel</a>
+            </form>
+        {% endif %}
+    </div>
+{% endblock %}

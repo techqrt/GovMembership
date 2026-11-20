@@ -5,12 +5,15 @@ from rest_framework import serializers
 from gmp.constants import Constants
 from gmp_apps.contact_admin.dataclasses.request.create.create_request import CreateRequestRequest
 from gmp_apps.contact_admin.models import ContactCategory
+from gmp_apps.contact_admin.models.contact_request import RequestPriority
 
 
 class CreateRequestRequestSerializer(serializers.Serializer):
     category_id = serializers.IntegerField(min_value=1)
     subject = serializers.CharField(min_length=3, max_length=200)
     description = serializers.CharField(min_length=10, max_length=5000)
+    priority = serializers.ChoiceField(choices=RequestPriority.choices, required=False, default=RequestPriority.NORMAL)
+    attachment_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False, allow_empty=True, max_length=3)
 
     def validate_category_id(self, value: int) -> int:
         if not ContactCategory.objects.filter(category_id=value, is_active=True).exists():

@@ -9,6 +9,7 @@ from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminTextareaWidget
 
 from gmp_apps.common.exceptions.errors import NotFoundError
 from gmp_apps.contact_admin.models import ContactCategory, ContactRequest
+from gmp_apps.member_documents.admin_helpers import DOWNLOAD_PERMISSION, document_links
 from gmp_apps.contact_admin.models.contact_request import RequestStatus
 
 
@@ -41,16 +42,28 @@ class ContactRequestAdmin(ModelAdmin):
     """Incoming Contact Admin requests: read, reply, set status. Requests are never added or deleted here."""
 
     form = ContactRequestForm
-    list_display = ('request_id', 'member', 'category', 'subject', 'status', 'created_date_time')
-    list_filter = ('status', 'category')
+    list_display = ('request_id', 'member', 'category', 'subject', 'priority', 'status', 'created_date_time')
+    list_filter = ('status', 'priority', 'category')
     search_fields = ('subject', 'description', 'user__full_name', 'user__membership_id', 'user__email', 'user__mobile_number')
     list_select_related = ('user', 'category')
     ordering = ('-created_date_time',)
     fields = (
-        'user', 'category', 'subject', 'description', 'created_date_time', 'status', 'admin_reply', 'replied_by',
-        'replied_date_time',
+        'user', 'category', 'subject', 'description', 'priority', 'attached_files', 'created_date_time', 'status', 'admin_reply',
+        'replied_by', 'replied_date_time',
     )
-    readonly_fields = ('user', 'category', 'subject', 'description', 'created_date_time', 'replied_by', 'replied_date_time')
+    readonly_fields = (
+        'user', 'category', 'subject', 'description', 'priority', 'attached_files', 'created_date_time', 'replied_by', 'replied_date_time',
+    )
+
+    def get_object(self, request: HttpRequest, object_id: str, from_field: str | None = None) -> ContactRequest | None:
+        obj = super().get_object(request, object_id, from_field)
+        if obj is not None:   # the readonly field below has no request, so carry the permission on the object
+            obj.viewer_can_download = request.user.has_perm(DOWNLOAD_PERMISSION)
+        return obj
+
+    @display(description='Attached files')
+    def attached_files(self, obj: ContactRequest) -> str:
+        return document_links(obj.attachments.all() if obj.pk else [], getattr(obj, 'viewer_can_download', False), empty='None')
 
     @display(description='Member', ordering='user__full_name')
     def member(self, obj: ContactRequest) -> str:

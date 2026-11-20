@@ -107,6 +107,7 @@ class OverviewCardTests(OverviewBase):
             'Knowledge Approvers': {'Approved chatbot entries'},
             'Content Editors': {'Scheduled content'}, 'Content Publishers': {'Scheduled content'},
             'Support Handlers': set(), 'Portal Managers': set(), 'Member Managers': set(), 'Membership Reviewers': set(), 'Dashboard Managers': set(),
+            'Document Reviewers': set(), 'Identity Reviewers': set(),
         }
         for group, wanted in expected.items():
             seen = set(self.cards(self.staff(group))) & NEW_TITLES
@@ -131,6 +132,8 @@ class PermissionMatrixTests(OverviewBase):
         'Knowledge Approvers': {'chatbot.view_knowledgeentry', 'chatbot.add_knowledgeentry', 'chatbot.change_knowledgeentry',
                                 'chatbot.delete_knowledgeentry', 'chatbot.approve_knowledgeentry', 'chatbot.view_chatlog'},
         'Dashboard Managers': {'dashboard.view_dashboardsection', 'dashboard.change_dashboardsection'},
+        'Document Reviewers': {'member_documents.view_memberdocument', 'member_documents.download_memberdocument'},
+        'Identity Reviewers': {'authentication.view_user', 'authentication.view_government_ids'},
         'Content Editors': {f'content.{a}_{m}' for a in ('view', 'add', 'change') for m in ('contentitem', 'contentcategory')},
         'Content Publishers': {f'content.{a}_{m}' for a in ('view', 'add', 'change', 'delete') for m in ('contentitem', 'contentcategory')} | {'content.publish_contentitem'},
         'Portal Managers': {f'portals.{a}_{m}' for a in ('view', 'add', 'change', 'delete') for m in ('complaintportal', 'portalcategory')},
@@ -159,6 +162,8 @@ class PermissionMatrixTests(OverviewBase):
         sensitive = {
             'publish_scheme': {'Scheme Reviewers'}, 'publish_contentitem': {'Content Publishers'}, 'approve_knowledgeentry': {'Knowledge Approvers'},
             'suspend_member': {'Member Managers'}, 'run_scheme_sync': {'Scheme Reviewers'}, 'view_chatlog': {'Knowledge Approvers'},
+            'download_memberdocument': {'Document Reviewers'}, 'view_government_ids': {'Identity Reviewers'}, 'view_memberdocument': {'Document Reviewers'}, 'delete_memberdocument': set(),
+            'view_memberdocumentaccesslog': set(),
             'delete_user': set(), 'add_user': set(), 'view_group': set(), 'change_group': set(), 'add_group': set(), 'change_permission': set(),
         }
         for codename, groups in sensitive.items():
@@ -169,7 +174,7 @@ class PermissionMatrixTests(OverviewBase):
         forbidden_apps = {'auth', 'admin', 'sessions', 'contenttypes', 'token_blacklist'}
         for name in self.EXPECTED:
             self.assertFalse({p.split('.')[0] for p in self.granted(name)} & forbidden_apps, name)
-            self.assertFalse({p for p in self.granted(name) if p.startswith('authentication.') and not p.endswith(('view_user', 'change_user', 'suspend_member'))}, name)
+            self.assertFalse({p for p in self.granted(name) if p.startswith('authentication.') and not p.endswith(('view_user', 'change_user', 'suspend_member', 'view_government_ids'))}, name)
 
     def test_makers_never_hold_more_than_checkers_in_the_same_area(self) -> None:
         self.assertLess(self.granted('Knowledge Editors'), self.granted('Knowledge Approvers'))
@@ -179,7 +184,7 @@ class PermissionMatrixTests(OverviewBase):
     def test_groups_do_not_reach_into_each_others_areas(self) -> None:
         areas = {'Member Managers': 'authentication', 'Membership Reviewers': 'membership', 'Scheme Reviewers': 'schemes', 'Knowledge Editors': 'chatbot',
                  'Knowledge Approvers': 'chatbot', 'Dashboard Managers': 'dashboard', 'Content Editors': 'content', 'Content Publishers': 'content',
-                 'Portal Managers': 'portals', 'Support Handlers': 'contact_admin'}
+                 'Portal Managers': 'portals', 'Support Handlers': 'contact_admin', 'Document Reviewers': 'member_documents', 'Identity Reviewers': 'authentication'}
         for name, app in areas.items():
             self.assertEqual({p.split('.')[0] for p in self.granted(name)}, {app}, name)
 
@@ -189,6 +194,7 @@ class PermissionMatrixTests(OverviewBase):
         client.force_login(nobody)
         for path in ('/admin/authentication/user/', '/admin/schemes/scheme/', '/admin/content/contentitem/', '/admin/chatbot/knowledgeentry/',
                      '/admin/portals/complaintportal/', '/admin/contact_admin/contactrequest/', '/admin/dashboard/dashboardsection/',
-                     '/admin/schemes/schemesyncrun/', '/admin/chatbot/chatlog/', '/admin/auth/group/'):
+                     '/admin/schemes/schemesyncrun/', '/admin/chatbot/chatlog/', '/admin/auth/group/', '/admin/member_documents/memberdocument/',
+                     '/admin/member_documents/memberdocumentaccesslog/', '/admin/authentication/governmentidaccesslog/'):
             self.assertEqual(client.get(path).status_code, 403, path)
         self.assertEqual(self.cards(nobody), {})

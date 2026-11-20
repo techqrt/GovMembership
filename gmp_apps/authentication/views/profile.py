@@ -26,9 +26,14 @@ class AuthenticationProfileView:
     def update_extract(self, params: UpdateProfileRequest) -> Response:
         user = User.objects.get(user_id=params.user_id)
         changes = params.changed_fields()
+        columns: list[str] = []
+        for kind in ('aadhaar', 'pan'):
+            value = changes.pop(f'{kind}_number', None)
+            if value is not None:   # '' clears; a masked echo was already dropped by the serializer
+                columns += user.set_government_id(kind, str(value))
         for field, value in changes.items():
             setattr(user, field, value)
-        user.save(update_fields=list(changes))
+        user.save(update_fields=[*changes, *columns])
         return Response(Utils.success_response_data(
             message=self.data_update, data=AuthenticationUtils.profile_data(user),
         ))

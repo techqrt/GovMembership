@@ -6,15 +6,17 @@ from rest_framework import serializers
 from gmp.constants import Constants
 from gmp_apps.authentication.dataclasses.request.create.register_user import RegisterUserRequest
 from gmp_apps.authentication.models import User
+from gmp_apps.authentication.serializers.request.profile_fields import ExtendedProfileFields
 from gmp_apps.authentication.utils import AuthenticationUtils
 
 
-class RegisterUserRequestSerializer(serializers.Serializer):
+class RegisterUserRequestSerializer(ExtendedProfileFields):
     full_name = serializers.CharField(max_length=150)
     email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
     mobile_number = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     referral_code = serializers.CharField(max_length=16, required=False, allow_null=True, allow_blank=True)
+    declaration_accepted = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         email = AuthenticationUtils.normalize_email(attrs.get('email'))

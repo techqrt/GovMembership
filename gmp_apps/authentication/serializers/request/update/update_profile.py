@@ -4,9 +4,10 @@ from rest_framework import serializers
 
 from gmp_apps.authentication.dataclasses.request.update.update_profile import UpdateProfileRequest
 from gmp_apps.authentication.models.user import Gender
+from gmp_apps.authentication.serializers.request.profile_fields import ExtendedProfileFields
 
 
-class UpdateProfileRequestSerializer(serializers.Serializer):
+class UpdateProfileRequestSerializer(ExtendedProfileFields):
     """Editable profile fields only. Membership, role, identifiers and codes are not accepted."""
 
     full_name = serializers.CharField(max_length=150, required=False)

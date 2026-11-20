@@ -18,12 +18,13 @@ class ContentItemForm(forms.ModelForm):
     class Meta:
         model = ContentItem
         fields = [
-            'content_type', 'title', 'summary', 'body', 'category', 'cover_image', 'video_url', 'min_level', 'is_pinned',
+            'content_type', 'title', 'summary', 'body', 'category', 'cover_image', 'video_url', 'duration_seconds', 'min_level', 'is_pinned',
             'status', 'publish_at', 'expire_at',
         ]
         widgets = {'body': UnfoldAdminTextareaWidget(attrs={'rows': 12}), 'summary': UnfoldAdminTextareaWidget(attrs={'rows': 3})}
         help_texts = {
             'body': 'Plain text only; line breaks are kept.',
+            'duration_seconds': 'Optional, videos only: the length in seconds (for example 754 for 12 min 34 s).',
             'video_url': 'Link to a video on an allowed host (YouTube, Vimeo by default). Videos are never hosted here.',
             'min_level': 'Members below this level cannot see the item at all.',
             'publish_at': 'Go-live time. Leave empty to go live as soon as it is published. A future time schedules it.',

@@ -1,10 +1,11 @@
 from typing import Any
 
 from gmp_apps.contact_admin.models import ContactCategory, ContactRequest
+from gmp_apps.member_documents.utils import MemberDocumentUtils
 
 
 class ContactAdminUtils:
-    request_filter_columns: dict[str, str] = {'status': 'status', 'categoryId': 'category_id'}
+    request_filter_columns: dict[str, str] = {'status': 'status', 'categoryId': 'category_id', 'priority': 'priority'}
     request_sort_columns: dict[str, str] = {
         'requestId': 'request_id', 'status': 'status', 'subject': 'subject', 'createdDateTime': 'created_date_time',
     }
@@ -22,6 +23,8 @@ class ContactAdminUtils:
             'subject': item.subject,
             'description': item.description,
             'status': item.status,
+            'priority': item.priority,
+            'attachments': [MemberDocumentUtils.document_row(d) for d in item.attachments.all()],   # prefetched by the callers
             'adminReply': item.admin_reply,
             'repliedDateTime': item.replied_date_time,
             'createdDateTime': item.created_date_time,
