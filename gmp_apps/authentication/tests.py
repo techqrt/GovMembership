@@ -790,3 +790,107 @@ class AdminDashboardTests(AdminManagementTestCase):
     def test_dashboard_requires_staff(self) -> None:
         self.assertEqual(Client().get('/admin/').status_code, 302)
         self.assertEqual(self.client_for(self.member()).get('/admin/').status_code, 302)
+
+
+class AdminOtpViewTests(AdminManagementTestCase):
+    """The member page shows a registration OTP while it is usable, and every such view is logged."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from cryptography.fernet import Fernet
+        patcher = mock.patch.object(Configurations, 'field_encryption_keys', [Fernet.generate_key().decode()])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.manager = self.staff('Member Managers')
+
+    def registered(self, **extra) -> User:
+        self.register(**extra)
+        return User.objects.get(email='asha@example.com')
+
+    def page(self, member: User):
+        return self.client_for(self.manager).get(self.url(member))
+
+    def test_page_shows_both_codes_and_logs_the_view(self) -> None:
+        from gmp_apps.authentication.models import GovernmentIdAccessLog
+        member = self.registered(mobile_number='9876543210')
+        email_code = self.last_otp('asha@example.com')
+        mobile_code = [m for m in LocMemOtpBackend.outbox if m['channel'] == 'mobile'][-1]['code']
+        page = self.page(member)
+        self.assertContains(page, f'<strong>{email_code}</strong>', html=False)
+        self.assertContains(page, f'<strong>{mobile_code}</strong>', html=False)
+        log = GovernmentIdAccessLog.objects.get()
+        self.assertEqual((log.action, log.admin_id, log.member_id), ('view_otp', self.manager.pk, member.pk))
+
+    def test_code_is_not_stored_in_plain_text(self) -> None:
+        member = self.registered()
+        code = self.last_otp('asha@example.com')
+        stored = Otp.objects.get(user=member)
+        self.assertNotIn(code, stored.code_encrypted)
+        self.assertTrue(stored.code_encrypted)
+
+    def test_used_code_disappears_and_nothing_is_logged(self) -> None:
+        from gmp_apps.authentication.models import GovernmentIdAccessLog
+        member = self.registered()
+        self.post('verify_otp', {'identifier': 'asha@example.com', 'otp': self.last_otp('asha@example.com')})
+        self.assertEqual(Otp.objects.get(user=member).code_encrypted, '')
+        page = self.page(member)
+        self.assertContains(page, 'None active')
+        self.assertEqual(GovernmentIdAccessLog.objects.count(), 0)
+
+    def test_expired_code_is_not_shown(self) -> None:
+        member = self.registered()
+        code = self.last_otp('asha@example.com')
+        Otp.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
+        self.assertNotContains(self.page(member), code)
+
+    def test_resend_replaces_the_old_code(self) -> None:
+        member = self.registered()
+        old = self.last_otp('asha@example.com')
+        Otp.objects.update(created_date_time=timezone.now() - timedelta(hours=1))
+        self.assertEqual(self.post('resend_otp', {'identifier': 'asha@example.com'}).status_code, 200)
+        new = self.last_otp('asha@example.com')
+        page = self.page(member)
+        self.assertContains(page, f'<strong>{new}</strong>')
+        if old != new:
+            self.assertNotContains(page, f'<strong>{old}</strong>')
+        self.assertEqual(Otp.objects.filter(user=member).exclude(code_encrypted='').count(), 1)
+
+    def test_password_reset_codes_are_never_stored_or_shown(self) -> None:
+        member = self.verified_user()
+        self.post('forgot_password', {'identifier': 'asha@example.com'})
+        reset_code = self.last_otp('asha@example.com')
+        reset = Otp.objects.get(user=member, purpose='password_reset')
+        self.assertEqual(reset.code_encrypted, '')
+        self.assertIsNone(reset.code_for_admin())
+        self.assertNotContains(self.page(member), reset_code)
+
+    def test_without_an_encryption_key_registration_still_works_and_nothing_is_shown(self) -> None:
+        with mock.patch.object(Configurations, 'field_encryption_keys', []), mock.patch.object(Configurations, 'debug', False):
+            member = self.registered()
+            self.assertEqual(Otp.objects.get(user=member).code_encrypted, '')
+            self.assertContains(self.page(member), 'None active')
+
+    def test_only_staff_with_member_access_can_open_the_page(self) -> None:
+        member = self.registered()
+        code = self.last_otp('asha@example.com')
+        for actor in (None, self.member()):
+            response = self.client_for(actor).get(self.url(member), follow=False)
+            self.assertNotEqual(response.status_code, 200)
+            self.assertNotContains(response, code, status_code=response.status_code)
+        outsider = self.staff()  # staff with no permission group
+        self.assertEqual(self.client_for(outsider).get(self.url(member)).status_code, 403)
+
+    def test_otp_list_page_still_hides_the_code(self) -> None:
+        member = self.registered()
+        code = self.last_otp('asha@example.com')
+        otp = Otp.objects.get(user=member)
+        page = self.client_for(self.superuser).get(f'/admin/authentication/otp/{otp.pk}/change/')
+        self.assertNotContains(page, code)
+        self.assertNotContains(page, otp.code_encrypted)
+
+    def test_a_used_code_is_never_readable_even_if_still_stored(self) -> None:
+        member = self.registered()
+        Otp.objects.filter(user=member).update(is_used=True)
+        otp = Otp.objects.get(user=member)
+        self.assertTrue(otp.code_encrypted)
+        self.assertIsNone(otp.code_for_admin())

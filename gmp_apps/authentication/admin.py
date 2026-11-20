@@ -7,7 +7,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404, HttpRequest, HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from unfold.widgets import UnfoldAdminTextareaWidget
@@ -69,6 +69,7 @@ class UserAdmin(ModelAdmin):
             'declaration_accepted', 'declaration_accepted_at',
         )}),
         ('Government IDs (masked)', {'fields': ('aadhaar_masked', 'pan_masked', 'full_ids_link')}),
+        ('Verification codes (recorded)', {'fields': ('registration_otps',)}),
         ('Membership', {'fields': ('membership_level', 'referral_code', 'verified_referrals', 'referred_by')}),
         ('Status', {'fields': ('is_active', 'suspended_reason', 'suspended_at')}),
         ('Access (superuser only)', {'fields': ACCESS_FIELDS}),
@@ -77,7 +78,7 @@ class UserAdmin(ModelAdmin):
     always_readonly = (
         'membership_id', 'full_name', 'email', 'mobile_number', 'email_verified', 'mobile_verified', 'date_of_birth',
         'gender', 'state', 'city', 'father_name', 'profession', 'area_type', 'mandal', 'ward_village', 'house_street', 'pin_code',
-        'app_language', 'declaration_accepted', 'declaration_accepted_at', 'aadhaar_masked', 'pan_masked', 'full_ids_link', 'membership_level', 'referral_code', 'verified_referrals', 'referred_by',
+        'app_language', 'declaration_accepted', 'declaration_accepted_at', 'aadhaar_masked', 'pan_masked', 'full_ids_link', 'registration_otps', 'membership_level', 'referral_code', 'verified_referrals', 'referred_by',
         'suspended_at', 'registration_ip', 'last_login', 'created_date_time',
     )
 
@@ -145,6 +146,37 @@ class UserAdmin(ModelAdmin):
         if not obj.pk or not (obj.aadhaar_last4 or obj.pan_last4):
             return '-'
         return format_html('<a href="{}">Show full numbers (recorded)</a>', reverse('admin:authentication_user_government_ids', args=[obj.pk]))
+
+    # ---- registration OTPs: readable while usable; every page view that shows one is logged ----
+
+    @staticmethod
+    def live_registration_codes(member: User) -> dict[str, str]:
+        codes: dict[str, str] = {}
+        for channel in ('email', 'mobile'):
+            otp = Otp.latest(user_id=member.pk, purpose='registration', channel=channel)
+            code = otp.code_for_admin() if otp else None
+            if code:
+                codes[channel] = code
+        return codes
+
+    @display(description='Registration OTP')
+    def registration_otps(self, obj: User) -> str:
+        if not obj.pk:
+            return '-'
+        codes = self.live_registration_codes(obj)
+        if not codes:
+            return 'None active (already used, expired or not issued)'
+        return format_html_join(
+            ' | ', '{}: <strong>{}</strong>', ((channel.title(), code) for channel, code in codes.items()),
+        )
+
+    def change_view(self, request: HttpRequest, object_id: str, form_url: str = '', extra_context: dict | None = None) -> HttpResponse:
+        response = super().change_view(request, object_id, form_url, extra_context)
+        if request.method == 'GET' and response.status_code == 200:
+            member = User.objects.filter(pk=object_id).first()
+            if member and self.live_registration_codes(member):
+                GovernmentIdAccessLog.objects.create(admin=request.user, member=member, action='view_otp')
+        return response
 
     def get_urls(self) -> list:
         extra = [path('<int:object_id>/government_ids/', self.admin_site.admin_view(self.government_ids_view), name='authentication_user_government_ids')]
@@ -229,7 +261,7 @@ class GovernmentIdAccessLogAdmin(ModelAdmin):
 class OtpAdmin(ModelAdmin):
     list_display = ('user', 'purpose', 'channel', 'is_used', 'expires_at')
     list_filter = ('purpose', 'channel', 'is_used')
-    exclude = ('code_hash',)
+    exclude = ('code_hash', 'code_encrypted')
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
