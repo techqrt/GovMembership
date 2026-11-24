@@ -15,7 +15,7 @@ from gmp_apps.contact_admin.views.public import ContactPublicView
 class ContactPublicRequestViewController:
     @extend_schema(
         description=(
-            'Public Contact Us form (no login). Send categoryId (one of the four topics), fullName, at least one of email or '
+            'Public Contact Us form (no login). Send problem_type (the topic name: Membership, Schemes, Complaints or Any other; category_id, the topic number from the topics list, also works and must match if both are sent), full_name, at least one of email or '
             'mobileNumber, description (10 to 5000 characters, no HTML) and an optional subject (left empty if not sent). '
             'Keep the field `website` in the form but hidden and empty: it is a trap for bots, and a filled one is dropped '
             'silently with the same success answer. No attachments. Rate limited per IP (429 when exceeded). The answer is only '

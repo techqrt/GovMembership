@@ -137,6 +137,56 @@ class PublicCreateTests(PublicBase):
         self.assertEqual((first.guest_email, first.guest_mobile), ('asha@example.com', ''))
         self.assertEqual((second.guest_email, second.guest_mobile), ('', '+919876543210'))
 
+    def post_topic(self, **topic):
+        payload = {'full_name': 'Asha Verma', 'email': 'asha@example.com', 'description': QUERY, **topic}
+        return APIClient().post(CREATE, payload, format='json')
+
+    def test_problem_type_by_name_works_for_each_of_the_four_topics(self) -> None:
+        for name in TOPICS:
+            cache.clear()
+            response = self.post_topic(problem_type=name)
+            self.assertEqual(response.status_code, 200, (name, response.data))
+        self.assertEqual([i.category.name for i in ContactRequest.objects.order_by('pk')], TOPICS)
+
+    def test_problem_type_ignores_capitals_and_stray_spaces(self) -> None:
+        for text in ('schemes', '  SCHEMES ', 'any   OTHER'):
+            cache.clear()
+            self.assertEqual(self.post_topic(problem_type=text).status_code, 200, text)
+        self.assertEqual([i.category.name for i in ContactRequest.objects.order_by('pk')], ['Schemes', 'Schemes', 'Any other'])
+
+    def test_an_unknown_or_hidden_problem_type_is_refused_and_lists_the_options(self) -> None:
+        for text in ('Refunds', 'Technical issue', 'Other', 'Scheme'):
+            response = self.post_topic(problem_type=text)
+            self.assertEqual(response.status_code, 400, text)
+            message = str(response.data['error'])
+            for name in TOPICS:
+                self.assertIn(name, message)
+        self.assertEqual(ContactRequest.objects.count(), 0)
+
+    def test_a_topic_is_required_by_name_or_number(self) -> None:
+        for empty in ({}, {'problem_type': ''}, {'problem_type': '   '}, {'problem_type': None}, {'category_id': None}):
+            cache.clear()
+            self.assertEqual(self.post_topic(**empty).status_code, 400, empty)
+        self.assertEqual(ContactRequest.objects.count(), 0)
+
+    def test_both_may_be_sent_if_they_agree_and_never_if_they_differ(self) -> None:
+        schemes = self.topic['Schemes'].category_id
+        self.assertEqual(self.post_topic(problem_type='Schemes', category_id=schemes).status_code, 200)
+        cache.clear()
+        clash = self.post_topic(problem_type='Schemes', category_id=self.topic['Complaints'].category_id)
+        self.assertEqual(clash.status_code, 400)
+        self.assertEqual(ContactRequest.objects.count(), 1)
+        self.assertEqual(ContactRequest.objects.get().category.name, 'Schemes')
+
+    def test_category_id_alone_still_works(self) -> None:
+        self.assertEqual(self.post_topic(category_id=self.topic['Complaints'].category_id).status_code, 200)
+        self.assertEqual(ContactRequest.objects.get().category.name, 'Complaints')
+
+    def test_a_topic_an_admin_switched_off_leaves_problem_type_too(self) -> None:
+        ContactCategory.objects.filter(name='Schemes').update(is_active=False)
+        self.assertEqual(self.post_topic(problem_type='Schemes').status_code, 400)
+        self.assertEqual(self.post_topic(problem_type='Complaints').status_code, 200)
+
     def test_unknown_and_missing_category_are_refused(self) -> None:
         self.assertEqual(self.send(category_id=999999).status_code, 400)
         self.assertEqual(self.send(category_id=Ellipsis).status_code, 400)

@@ -19,7 +19,9 @@ def reject_markup(value: str) -> str:
 
 
 class CreatePublicRequestRequestSerializer(serializers.Serializer):
-    category_id = serializers.IntegerField(min_value=1)
+    # The topic: send problem_type (its name, for example "Schemes"). category_id (its number) still works; if both come, they must agree.
+    problem_type = serializers.CharField(max_length=80, required=False, allow_null=True, allow_blank=True)
+    category_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     full_name = serializers.CharField(min_length=2, max_length=150)
     email = serializers.EmailField(max_length=254, required=False, allow_null=True, allow_blank=True)
     mobile_number = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
@@ -41,7 +43,25 @@ class CreatePublicRequestRequestSerializer(serializers.Serializer):
     def validate_description(self, value: str) -> str:
         return reject_markup(value)
 
+    @staticmethod
+    def resolve_topic(problem_type: str | None, category_id: int | None) -> int:
+        """The id of the chosen active topic, from its name (any capitals, stray spaces) and/or its number."""
+        name = ' '.join((problem_type or '').split())
+        if not name and not category_id:
+            raise serializers.ValidationError({'problem_type': Constants.contact_problem_type_required})
+        active = {c.name.lower(): c.category_id for c in ContactCategory.objects.filter(is_active=True)}
+        if not name:
+            return category_id
+        chosen = active.get(name.lower())
+        if chosen is None:
+            options = ', '.join(c.name for c in ContactCategory.objects.filter(is_active=True))
+            raise serializers.ValidationError({'problem_type': f'{Constants.contact_bad_problem_type}: {options}'})
+        if category_id and category_id != chosen:
+            raise serializers.ValidationError({'problem_type': Constants.contact_problem_type_mismatch})
+        return chosen
+
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        attrs['category_id'] = self.resolve_topic(attrs.pop('problem_type', None), attrs.get('category_id'))
         email = AuthenticationUtils.normalize_email(attrs.get('email'))
         mobile = AuthenticationUtils.normalize_mobile(attrs.get('mobile_number'))
         if not email and not mobile:
