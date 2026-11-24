@@ -2446,6 +2446,11 @@ class ClassificationRuleTests(SimpleTestCase):
         ('Pondicherry Welfare Board', 'X', None, 'state', 'Puducherry'),
         ('Department of Health, Delhi', 'X', None, 'state', 'Delhi'),
         ('Department of Health, Jammu & Kashmir', 'X', None, 'state', 'Jammu and Kashmir'),
+        ('', 'Keralam Dakshayani Self-Entrepreneurship Assistance', 'https://x.in/keralam-dakshayani', 'state', 'Kerala'),
+        ('', 'Indira Gandhi National Old Age Pension Scheme', 'https://x.in/ignoaps', 'national', ''),
+        ('', 'National Means Cum Merit Scholarship Scheme', None, 'national', ''),
+        ('', 'Telangana National Merit Award', None, 'state', 'Telangana'),                   # a state beats "National"
+        ('', 'Nationalised Bank Loan', None, '', ''),                                          # "nationalised" is not "national"
         # unclear: nothing is guessed
         ('', 'Kisan Vikas Patra (KVP)', 'https://x.in/kisan-vikas-patra-kvp', '', ''),
         ('Department of Agriculture', 'X', None, '', ''),

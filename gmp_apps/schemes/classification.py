@@ -26,7 +26,7 @@ ALIASES = {
     'orissa': 'Odisha', 'uttaranchal': 'Uttarakhand', 'pondicherry': 'Puducherry', 'nct of delhi': 'Delhi',
     'new delhi': 'Delhi', 'andaman & nicobar islands': 'Andaman and Nicobar Islands', 'jammu & kashmir': 'Jammu and Kashmir',
     'j&k': 'Jammu and Kashmir', 'daman and diu': 'Dadra and Nagar Haveli and Daman and Diu',
-    'dadra and nagar haveli': 'Dadra and Nagar Haveli and Daman and Diu',
+    'dadra and nagar haveli': 'Dadra and Nagar Haveli and Daman and Diu', 'keralam': 'Kerala',
 }
 _NAMES = {name.lower(): name for name in STATES} | ALIASES
 # Longest names first, so "Arunachal Pradesh" is never read as a shorter name inside it.
@@ -38,7 +38,7 @@ _NATIONAL_DEPARTMENT = re.compile(
     r'^\s*ministry\b|\bgovernment of india\b|\bgovt\.? of india\b|\bunion (government|ministry)\b|\bcentral government\b',
     re.IGNORECASE,
 )
-_NATIONAL_TITLE = re.compile(r'^\s*(pradhan\s+mantri|pm[\s-])', re.IGNORECASE)
+_NATIONAL_TITLE = re.compile(r'^\s*(pradhan\s+mantri|pm[\s-])|(?<![a-z])national(?![a-z])', re.IGNORECASE)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -66,7 +66,7 @@ def _slug(source_url: str | None) -> str:
 
 def classify(department: str = '', title: str = '', source_url: str | None = None) -> Classification:
     """The first clear answer wins, in this order: a state in the department, a Union department, a state in the
-    title, a state in the page address, a Pradhan Mantri title. Two different states in one place is unclear."""
+    title, a state in the page address, a Pradhan Mantri or National title. Two different states in one place is unclear."""
     in_department = _states_in(department)
     if len(in_department) == 1:
         return Classification(STATE, next(iter(in_department)), 'department names the state')
@@ -81,5 +81,5 @@ def classify(department: str = '', title: str = '', source_url: str | None = Non
         if len(found) > 1:
             return Classification(reason=f'{label} names more than one state')
     if _NATIONAL_TITLE.search(title or ''):
-        return Classification(NATIONAL, '', 'title is a Pradhan Mantri scheme')
+        return Classification(NATIONAL, '', 'title is a Pradhan Mantri or National scheme')
     return Classification(reason='nothing in the department, title or page address makes it clear')
