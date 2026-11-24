@@ -9,6 +9,8 @@ class SchemeItemSerializer(serializers.Serializer):
     imageUrl = serializers.URLField(allow_null=True)
     tags = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     isActive = serializers.BooleanField(help_text='true: show Active; false: show Closed (an admin switch)')
+    level = serializers.ChoiceField(choices=['national', 'state'], allow_null=True, help_text='national or state; null when not set yet')
+    state = serializers.CharField(allow_null=True, help_text='The state of a state scheme; null otherwise')
     updatedDateTime = serializers.DateTimeField()
 
 

@@ -69,6 +69,8 @@ class SchemeRow(serializers.Serializer):
     imageUrl = serializers.CharField(allow_null=True)
     tags = SchemeTag(many=True)
     isActive = serializers.BooleanField(help_text='Active (true) or Closed (false)')
+    level = serializers.ChoiceField(choices=['national', 'state'], allow_null=True, help_text='national or state; null when not set yet')
+    state = serializers.CharField(allow_null=True, help_text='The state of a state scheme; null otherwise')
     updatedDateTime = serializers.DateTimeField()
 
 

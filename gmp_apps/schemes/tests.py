@@ -748,7 +748,7 @@ class SchemeMemberApiTests(SchemeApiBase):
         image = self.add_image(scheme)
         response = self.as_user(self.member()).get(self.LIST)
         row = response.data['data']['data'][0]
-        self.assertEqual(set(row), {'schemeId', 'title', 'department', 'summary', 'imageUrl', 'tags', 'isActive', 'updatedDateTime'})
+        self.assertEqual(set(row), {'schemeId', 'title', 'department', 'summary', 'imageUrl', 'tags', 'isActive', 'level', 'state', 'updatedDateTime'})
         self.assertEqual((row['summary'], row['imageUrl']), ('About Visible one', f'http://testserver{image.file.url}'))
         payload = str(response.data['data'])
         for internal in ('status', 'locallyEdited', 'contentHash', 'isManual', 'reviewedBy', 'sourceLastmod', 'pending_review'):
@@ -2414,3 +2414,268 @@ class SchemeActiveFlagSyncTests(SyncBase):
     def test_a_scheme_found_by_the_sync_starts_active(self) -> None:
         self.run_sync(self.source({'alpha-scheme': ('2024-05-01', page('Alpha'))}))
         self.assertTrue(Scheme.objects.get().is_accepting_applications)
+
+
+# ---- National / state level (FG8) ----
+
+from django.core.exceptions import ValidationError  # noqa: E402
+from django.test import SimpleTestCase  # noqa: E402
+
+from gmp_apps.schemes.classification import classify  # noqa: E402
+
+
+class ClassificationRuleTests(SimpleTestCase):
+    """The rules read department, then title, then page address; unclear text is left unset, never guessed."""
+
+    CASES = [
+        # (department, title, source_url, level, state)
+        ('Animal Husbandry and Dairying Department, Madhya Pradesh', 'X', None, 'state', 'Madhya Pradesh'),
+        ('State Livestock and Poultry Development Corporation, Madhya Pradesh', 'X', None, 'state', 'Madhya Pradesh'),
+        ('Department of Social Justice and Empowerment, Haryana Government', 'X', None, 'state', 'Haryana'),
+        ('Khadi & Village Industries Section, Government of Uttar Pradesh', 'X', None, 'state', 'Uttar Pradesh'),
+        ('Punjab Social Security and Women & Child Development Department', 'X', None, 'state', 'Punjab'),
+        ('Ministry Of Minority Affairs', 'Begum Hazrat Mahal Scholarship', None, 'national', ''),
+        ('Department of Agriculture, Government of India', 'X', None, 'national', ''),
+        ('Ministry of Rural Development, Government of Haryana', 'X', None, 'state', 'Haryana'),   # a state beats "Ministry"
+        ('', 'Rajasthan Jan Samman Video Contest', 'https://x.in/rajasthan-jan-samman-video-contest', 'state', 'Rajasthan'),
+        ('', 'Some title', 'https://x.in/madhya-pradesh-pashudhan-bima-yojana', 'state', 'Madhya Pradesh'),
+        ('', 'Pradhan Mantri Awas Yojana', 'https://x.in/awas', 'national', ''),
+        ('', 'PM-Kisan Samman Nidhi', 'https://x.in/pm-kisan', 'national', ''),
+        ('Arunachal Pradesh Rural Department', 'X', None, 'state', 'Arunachal Pradesh'),
+        ('Government of Orissa', 'X', None, 'state', 'Odisha'),
+        ('Pondicherry Welfare Board', 'X', None, 'state', 'Puducherry'),
+        ('Department of Health, Delhi', 'X', None, 'state', 'Delhi'),
+        ('Department of Health, Jammu & Kashmir', 'X', None, 'state', 'Jammu and Kashmir'),
+        # unclear: nothing is guessed
+        ('', 'Kisan Vikas Patra (KVP)', 'https://x.in/kisan-vikas-patra-kvp', '', ''),
+        ('Department of Agriculture', 'X', None, '', ''),
+        ('Department of Roads, Haryana and Punjab', 'X', None, '', ''),
+        ('', 'Goal setting scheme', 'https://x.in/goal-setting-scheme', '', ''),               # "goal" is not Goa
+        ('', 'Bihari Tales', 'https://x.in/bihari-tales', '', ''),                              # "bihari" is not Bihar
+        ('Mongoa Development Board', 'X', None, '', ''),                                        # "goa" at the end of a longer word
+        ('', '', None, '', ''),
+    ]
+
+    def test_rule_table(self) -> None:
+        for department, title, source_url, level, state in self.CASES:
+            guess = classify(department, title, source_url)
+            self.assertEqual((guess.level, guess.state), (level, state), (department, title, source_url))
+
+    def test_an_unclear_scheme_always_says_why(self) -> None:
+        self.assertTrue(classify('Department of Agriculture').reason)
+
+
+class SchemeLevelModelTests(TestCase):
+    def build(self, **kw) -> Scheme:
+        return Scheme(title='T', **kw)
+
+    def test_valid_combinations(self) -> None:
+        for kw in ({}, {'level': 'national'}, {'level': 'state', 'state': 'Haryana'}):
+            self.build(**kw).clean()
+
+    def test_invalid_combinations(self) -> None:
+        for kw in ({'level': 'state'}, {'level': 'national', 'state': 'Haryana'}, {'state': 'Haryana'}):
+            with self.assertRaises(ValidationError, msg=str(kw)):
+                self.build(**kw).clean()
+
+
+class SchemeLevelApiTests(SchemeApiBase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.national = self.scheme('National one', level='national')
+        self.haryana = self.scheme('Haryana one', level='state', state='Haryana')
+        self.punjab = self.scheme('Punjab one', level='state', state='Punjab')
+        self.unset = self.scheme('Unset one')
+        self.hidden = self.scheme('Hidden Haryana', status='unpublished', level='state', state='Haryana')
+        self.client_ = self.as_user(self.member())
+
+    def titles(self, query: str = '') -> list[str]:
+        response = self.client_.get(f'/schemes/get_all/?{query}')
+        self.assertEqual(response.status_code, 200, response.data)
+        return sorted(r['title'] for r in response.data['data']['data'])
+
+    def test_rows_carry_level_and_state_with_null_when_unset(self) -> None:
+        rows = {r['title']: r for r in self.client_.get('/schemes/get_all/').data['data']['data']}
+        self.assertEqual((rows['National one']['level'], rows['National one']['state']), ('national', None))
+        self.assertEqual((rows['Haryana one']['level'], rows['Haryana one']['state']), ('state', 'Haryana'))
+        self.assertEqual((rows['Unset one']['level'], rows['Unset one']['state']), (None, None))
+        detail = self.client_.get(f'/schemes/get/?scheme_id={self.haryana.pk}').data['data']
+        self.assertEqual((detail['level'], detail['state']), ('state', 'Haryana'))
+
+    def test_unfiltered_list_still_has_every_published_scheme(self) -> None:
+        self.assertEqual(self.titles(), ['Haryana one', 'National one', 'Punjab one', 'Unset one'])
+
+    def test_filter_by_level(self) -> None:
+        self.assertEqual(self.titles('filter_key=level&filter_value=national'), ['National one'])
+        self.assertEqual(self.titles('filter_key=level&filter_value=state'), ['Haryana one', 'Punjab one'])
+
+    def test_filter_by_state_ignores_capitalisation_and_hides_unpublished(self) -> None:
+        self.assertEqual(self.titles('filter_key=state&filter_value=Haryana'), ['Haryana one'])
+        self.assertEqual(self.titles('filter_key=state&filter_value=haryana'), ['Haryana one'])
+
+    def test_unknown_values_are_refused_not_ignored(self) -> None:
+        for query in ('filter_key=level&filter_value=central', 'filter_key=state&filter_value=Atlantis', 'filter_key=state&filter_value='):
+            self.assertEqual(self.client_.get(f'/schemes/get_all/?{query}').status_code, 400, query)
+
+    def test_a_scheme_with_no_level_matches_neither_filter(self) -> None:
+        for query in ('filter_key=level&filter_value=national', 'filter_key=level&filter_value=state'):
+            self.assertNotIn('Unset one', self.titles(query))
+
+    def test_state_options_list_counts_for_published_schemes_only(self) -> None:
+        self.scheme('Another Haryana', level='state', state='Haryana')
+        rows = self.client_.get('/schemes/state/get_all/').data['data']['data']
+        self.assertEqual(rows, [
+            {'level': 'national', 'state': None, 'count': 1},
+            {'level': 'state', 'state': 'Haryana', 'count': 2},     # the unpublished one is not counted
+            {'level': 'state', 'state': 'Punjab', 'count': 1},
+        ])
+
+    def test_state_options_hide_places_with_nothing_published(self) -> None:
+        Scheme.objects.filter(level='national').update(status='unpublished')
+        rows = self.client_.get('/schemes/state/get_all/').data['data']['data']
+        self.assertEqual([r['level'] for r in rows], ['state', 'state'])
+
+    def test_state_options_need_a_member_login(self) -> None:
+        self.assertEqual(self.as_user(None).get('/schemes/state/get_all/').status_code, 401)
+        self.assertEqual(self.as_user(self.staff('Scheme Reviewers')).get('/schemes/state/get_all/').status_code, 403)
+
+    def test_dashboard_schemes_section_carries_level_and_state(self) -> None:
+        sections = {s['key']: s for s in self.client_.get('/dashboard/get/').data['data']['sections']}
+        items = {i['title']: i for i in sections['schemes']['data']['items']}
+        self.assertEqual((items['Haryana one']['level'], items['Haryana one']['state']), ('state', 'Haryana'))
+        self.assertEqual((items['Unset one']['level'], items['Unset one']['state']), (None, None))
+
+    def test_swagger_documents_the_new_filter_keys_and_endpoint(self) -> None:
+        import yaml
+        paths = yaml.safe_load(self.as_user(None).get('/api/schema/').content)['paths']
+        self.assertIn('/schemes/state/get_all/', paths)
+        description = ' '.join(paths['/schemes/get_all/']['get']['description'].split())
+        self.assertIn('level (national or state)', description)
+        self.assertIn('state (see state/get_all', description)
+
+
+class SchemeLevelAdminTests(SchemeAdminRichTests):
+    def run_action(self, user: User, action: str, *schemes: Scheme):
+        client = Client()
+        client.force_login(user)
+        return client.post(self.LIST, {'action': action, '_selected_action': [s.pk for s in schemes]}, follow=True)
+
+    def test_an_admin_can_set_level_and_state_without_freezing_the_scheme(self) -> None:
+        scheme = self.scheme('Imported one')
+        self.post(scheme, level='state', state='Haryana')
+        scheme.refresh_from_db()
+        self.assertEqual((scheme.level, scheme.state, scheme.locally_edited), ('state', 'Haryana', False))
+
+    def test_an_inconsistent_choice_is_refused(self) -> None:
+        scheme = self.scheme('Imported one')
+        for overrides in ({'level': 'state', 'state': ''}, {'level': 'national', 'state': 'Haryana'}, {'level': '', 'state': 'Haryana'}):
+            self.post(scheme, **overrides)
+            scheme.refresh_from_db()
+            self.assertEqual((scheme.level, scheme.state), ('', ''), overrides)
+
+    def test_needs_level_filter_and_columns(self) -> None:
+        self.scheme('Done one', level='national')
+        self.scheme('Missing one')
+        page_ = self.client_.get(f'{self.LIST}?needs_level=missing')
+        self.assertEqual([s.title for s in page_.context['cl'].result_list], ['Missing one'])
+        self.assertIn('needs_level', [getattr(spec, 'parameter_name', None) for spec in page_.context['cl'].filter_specs])
+        self.assertIn('level', [getattr(spec, 'field_path', None) for spec in page_.context['cl'].filter_specs])
+
+    def test_fill_action_fills_only_unset_schemes_and_changes_nothing_else(self) -> None:
+        unset = self.scheme('Unset one', department='Punjab Social Security Department')
+        unclear = self.scheme('Unclear one', department='Department of Agriculture')
+        kept = self.scheme('Kept one', department='Haryana Department', level='national')   # an admin's choice
+        before = {s.pk: (s.status, s.content_hash, s.updated_date_time, s.locally_edited) for s in (unset, unclear, kept)}
+        response = self.run_action(self.reviewer, 'fill_level_selected', unset, unclear, kept)
+        self.assertContains(response, '1 scheme(s) filled in. 1 could not be told')
+        for scheme in (unset, unclear, kept):
+            scheme.refresh_from_db()
+        self.assertEqual([(s.level, s.state) for s in (unset, unclear, kept)], [('state', 'Punjab'), ('', ''), ('national', '')])
+        self.assertEqual(before, {s.pk: (s.status, s.content_hash, s.updated_date_time, s.locally_edited) for s in (unset, unclear, kept)})
+
+
+class SchemeLevelSyncTests(SyncBase):
+    def first(self, **kw) -> Scheme:
+        self.run_sync(self.source({'alpha-scheme': ('2024-05-01', page('Alpha', table=(('Department', 'Haryana Social Welfare'),), **kw))}))
+        return Scheme.objects.get()
+
+    def test_a_new_scheme_gets_its_level_from_the_rules(self) -> None:
+        scheme = self.first()
+        self.assertEqual((scheme.level, scheme.state), ('state', 'Haryana'))
+
+    def test_an_admin_choice_survives_a_content_update_and_a_changed_department(self) -> None:
+        self.first()
+        Scheme.objects.update(level='national', state='')
+        run = self.run_sync(self.source({'alpha-scheme': ('2024-06-01', page('Alpha', table=(('Department', 'Punjab Welfare'),)))}))
+        self.assertEqual(run.updated, 1)
+        scheme = Scheme.objects.get()
+        self.assertEqual((scheme.department, scheme.level, scheme.state), ('Punjab Welfare', 'national', ''))
+
+    def test_a_scheme_with_no_level_is_filled_by_the_next_sync_without_counting_as_changed(self) -> None:
+        scheme = self.first()
+        Scheme.objects.update(level='', state='')
+        fingerprint = scheme.content_hash
+        run = self.run_sync(self.source({'alpha-scheme': ('2024-05-02', page('Alpha', table=(('Department', 'Haryana Social Welfare'),)))}))
+        self.assertEqual((run.updated, run.unchanged), (0, 1))
+        scheme.refresh_from_db()
+        self.assertEqual((scheme.level, scheme.state, scheme.content_hash), ('state', 'Haryana', fingerprint))
+
+    def test_an_edited_scheme_still_gets_a_missing_level_but_keeps_its_content(self) -> None:
+        self.first()
+        Scheme.objects.update(level='', state='', locally_edited=True, title='Admin title')
+        self.run_sync(self.source({'alpha-scheme': ('2024-06-01', page('Alpha changed', table=(('Department', 'Haryana Social Welfare'),)))}))
+        scheme = Scheme.objects.get()
+        self.assertEqual((scheme.title, scheme.level, scheme.state), ('Admin title', 'state', 'Haryana'))
+
+
+class ClassifySchemesCommandTests(SchemeApiBase):
+    def run_cmd(self, *args: str) -> str:
+        out = StringIO()
+        call_command('classify_schemes', *args, stdout=out)
+        return out.getvalue()
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.a = self.scheme('Haryana one', department='Social Welfare, Haryana')
+        self.b = self.scheme('Ministry one', department='Ministry of Finance')
+        self.c = self.scheme('Unclear one', department='Department of Agriculture')
+        self.kept = self.scheme('Kept one', department='Haryana Dept', level='national')
+        self.hidden = self.scheme('Pending one', status='pending_review', department='Punjab Dept')
+
+    def levels(self) -> list[tuple[str, str]]:
+        return [(s.level, s.state) for s in Scheme.objects.order_by('scheme_id')]
+
+    def test_preview_writes_nothing_and_says_what_it_would_do(self) -> None:
+        before = self.levels()
+        text = self.run_cmd()
+        self.assertEqual(self.levels(), before)
+        self.assertIn('Would set: 1 national, 2 state. Left unset: 1.', text)
+        self.assertIn('Preview only', text)
+        self.assertIn('NOT SET', text)
+
+    def test_apply_sets_only_the_level_of_schemes_that_have_none(self) -> None:
+        text = self.run_cmd('--apply')
+        self.assertEqual(self.levels(), [('state', 'Haryana'), ('national', ''), ('', ''), ('national', ''), ('state', 'Punjab')])
+        self.assertIn('3 scheme(s) classified', text)
+
+    def test_apply_leaves_status_content_and_times_exactly_as_they_were(self) -> None:
+        before = {s.pk: (s.status, s.content_hash, s.updated_date_time, s.locally_edited, s.published_date_time) for s in Scheme.objects.all()}
+        self.run_cmd('--apply')
+        after = {s.pk: (s.status, s.content_hash, s.updated_date_time, s.locally_edited, s.published_date_time) for s in Scheme.objects.all()}
+        self.assertEqual(before, after)
+
+    def test_running_it_twice_changes_nothing_the_second_time(self) -> None:
+        self.run_cmd('--apply')
+        once = self.levels()
+        text = self.run_cmd('--apply')
+        self.assertEqual(self.levels(), once)
+        self.assertIn('Would set: 0 national, 0 state', text)
+
+    def test_if_anything_else_would_change_nothing_is_written(self) -> None:
+        from gmp_apps.schemes.management.commands import classify_schemes as module
+        before = self.levels()
+        values = iter([{1: ('a',)}, {1: ('b',)}])
+        with mock.patch.object(module, 'snapshot', side_effect=lambda: next(values)):
+            with self.assertRaises(CommandError):
+                self.run_cmd('--apply')
+        self.assertEqual(self.levels(), before)

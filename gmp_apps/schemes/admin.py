@@ -18,6 +18,7 @@ from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import action
 from unfold.widgets import UnfoldAdminTextareaWidget
 
+from gmp_apps.schemes.classification import classify
 from gmp_apps.schemes.media_check import find_problems, requeue_media
 from gmp_apps.schemes.tasks import sync_schemes
 from gmp_apps.schemes.models import Scheme, SchemeDocument, SchemeExclusion, SchemeImage, SchemeSyncRun, SchemeTag
@@ -162,6 +163,19 @@ class MediaStatusFilter(SimpleListFilter):
             return queryset.filter(is_manual=True) | queryset.filter(locally_edited=True)
         return queryset
 
+class NeedsLevelFilter(SimpleListFilter):
+    """Schemes with no national/state level yet: they are listed to members but match neither filter."""
+
+    title = 'national / state'
+    parameter_name = 'needs_level'
+
+    def lookups(self, request: HttpRequest, model_admin: ModelAdmin) -> list[tuple[str, str]]:
+        return [('missing', 'Level not set yet')]
+
+    def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
+        return queryset.filter(level='') if self.value() == 'missing' else queryset
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -177,17 +191,17 @@ class SchemeAdmin(ModelAdmin):
 
     form = SchemeForm
     inlines = [SchemeTagInline, SchemeImageInline, SchemeDocumentInline]
-    list_display = ('title', 'department', 'status', 'is_accepting_applications', 'media_status', 'is_manual', 'locally_edited', 'last_synced_at', 'updated_date_time')
-    list_filter = ('status', 'is_accepting_applications', MediaStatusFilter, 'is_manual', 'locally_edited')
+    list_display = ('title', 'department', 'level', 'state', 'status', 'is_accepting_applications', 'media_status', 'is_manual', 'locally_edited', 'last_synced_at', 'updated_date_time')
+    list_filter = ('status', NeedsLevelFilter, 'level', 'state', 'is_accepting_applications', MediaStatusFilter, 'is_manual', 'locally_edited')
     search_fields = ('title', 'department', 'source_url', 'description')
     ordering = ('-updated_date_time',)
-    actions = ['publish_selected', 'unpublish_selected', 'release_local_edits', 'requeue_media_selected']
+    actions = ['publish_selected', 'unpublish_selected', 'release_local_edits', 'requeue_media_selected', 'fill_level_selected']
     actions_list = ['check_media']
     fieldsets = (
         ('Content', {'fields': CONTENT_FIELDS}),
         ('Source', {'fields': ('source_url', 'links_text')}),
         ('Details', {'fields': ('overview_text', 'additional_text')}),
-        ('Review', {'fields': ('status', 'is_accepting_applications', 'is_manual', 'locally_edited', 'reviewed_by', 'published_date_time')}),
+        ('Review', {'fields': ('status', 'level', 'state', 'is_accepting_applications', 'is_manual', 'locally_edited', 'reviewed_by', 'published_date_time')}),
         ('Sync', {'fields': ('last_synced_at', 'media_synced_at', 'source_lastmod', 'created_date_time', 'updated_date_time')}),
     )
     review_fields = (
@@ -266,6 +280,20 @@ class SchemeAdmin(ModelAdmin):
         skipped = len(problems) - len(owned)
         note = f' {skipped} are managed by an admin (edited or manual): replace their files by hand.' if skipped else ''
         self.message_user(request, f'{len(owned)} scheme(s) will have their pictures/PDFs fetched again by the next sync ({removed} broken file record(s) removed).{note}')
+
+    @action(description='Fill level and state from the rules (only schemes with none set)', permissions=['change'])
+    def fill_level_selected(self, request: HttpRequest, queryset: QuerySet) -> None:
+        """Only schemes with no level yet; a level that is set is never touched. A queryset update, so no scheme
+        is marked as edited and its content, status and 'updated' time stay exactly as they were."""
+        filled = unclear = 0
+        for pk, department, title, source_url in list(queryset.filter(level='').values_list('pk', 'department', 'title', 'source_url')):
+            guess = classify(department, title, source_url)
+            if guess.level:
+                Scheme.objects.filter(pk=pk, level='').update(level=guess.level, state=guess.state)
+                filled += 1
+            else:
+                unclear += 1
+        self.message_user(request, f'{filled} scheme(s) filled in. {unclear} could not be told from their text: set those by hand.')
 
     @action(description='Check pictures and PDFs', permissions=['view'], url_path='check-media')
     def check_media(self, request: HttpRequest) -> HttpResponse:

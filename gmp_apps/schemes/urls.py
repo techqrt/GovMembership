@@ -6,5 +6,6 @@ urlpatterns = [
     path('get_all/', Scheme.get_all, name='get_all_schemes_scheme'),
     path('get/', Scheme.get, name='get_schemes_scheme'),
     path('tag/get_all/', Scheme.get_tags, name='get_all_schemes_tag'),
+    path('state/get_all/', Scheme.get_states, name='get_all_schemes_state'),
     path('delete/', Scheme.delete, name='delete_schemes_scheme'),
 ]

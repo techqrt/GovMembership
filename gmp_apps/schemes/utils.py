@@ -5,8 +5,11 @@ from urllib.parse import urlsplit
 from django.db.models import QuerySet
 
 from gmp.config import Configurations
+from gmp.constants import Constants
 from gmp_apps.common.utils import Utils
+from gmp_apps.schemes.classification import canonical_state
 from gmp_apps.schemes.models import Scheme
+from gmp_apps.schemes.models.scheme import SchemeLevel
 
 SUMMARY_CHARS = 220
 
@@ -16,9 +19,25 @@ def tag_filter(group: str) -> Callable[[QuerySet, str], QuerySet]:
     return lambda queryset, value: queryset.filter(tags__group=group, tags__name=value)
 
 
+def level_filter(queryset: QuerySet, value: str) -> QuerySet:
+    if value not in SchemeLevel.values:
+        raise ValueError(Constants.bad_filter_value)
+    return queryset.filter(level=value)
+
+
+def state_filter(queryset: QuerySet, value: str) -> QuerySet:
+    """Matches a state's schemes whatever spelling the app sends (the member's profile state is free text)."""
+    wanted = canonical_state(value)
+    if wanted is None:
+        raise ValueError(Constants.bad_filter_value)
+    return queryset.filter(state=wanted)
+
+
 class SchemeUtils:
     filter_columns: dict[str, Any] = {
         'department': 'department',
+        'level': level_filter,
+        'state': state_filter,
         'schemeType': tag_filter('scheme_type'),
         'personType': tag_filter('person_type'),
         'caste': tag_filter('caste'),
@@ -74,6 +93,8 @@ class SchemeUtils:
             'imageUrl': images[0] if images else None,
             'tags': SchemeUtils.tags(scheme),
             'isActive': scheme.is_accepting_applications,
+            'level': scheme.level or None,
+            'state': scheme.state or None,
             'updatedDateTime': scheme.updated_date_time,
         }
 
@@ -102,6 +123,8 @@ class SchemeUtils:
             'tags': SchemeUtils.tags(scheme),
             'images': SchemeUtils.image_urls(scheme, base),
             'isActive': scheme.is_accepting_applications,
+            'level': scheme.level or None,
+            'state': scheme.state or None,
             'publishedDateTime': scheme.published_date_time,
             'updatedDateTime': scheme.updated_date_time,
         }

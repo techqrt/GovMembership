@@ -9,6 +9,7 @@ from django.utils import timezone
 from gmp.config import Configurations
 from django.core.files.base import ContentFile
 
+from gmp_apps.schemes.classification import classify
 from gmp_apps.schemes.documents import MAX_DOCUMENTS, looks_like_pdf
 from gmp_apps.schemes.images import sha256_of, sniff_image_extension
 from gmp_apps.schemes.models import Scheme, SchemeDocument, SchemeExclusion, SchemeImage, SchemeSyncRun
@@ -175,9 +176,11 @@ class SchemeSyncRunner:
             with transaction.atomic():
                 scheme = Scheme.objects.select_for_update().filter(source_url=entry.url).first()
                 if scheme is None:
+                    guess = classify(parsed.department, parsed.title, entry.url)
                     created = Scheme.objects.create(
                         source_url=entry.url, status=SchemeStatus.PENDING_REVIEW, content_hash=fingerprint,
-                        source_lastmod=entry.lastmod, last_synced_at=now, **self._content(parsed),
+                        source_lastmod=entry.lastmod, last_synced_at=now, level=guess.level, state=guess.state,
+                        **self._content(parsed),
                     )
                     created.set_tags(parsed.tags)
                     run.created += 1
@@ -193,6 +196,9 @@ class SchemeSyncRunner:
                     scheme.content_hash = fingerprint
                     scheme.set_tags(parsed.tags)
                     run.updated += 1
+                if not scheme.level:  # fills a scheme that has no level yet; a level that is set (by an admin or earlier) is never changed
+                    guess = classify(scheme.department, scheme.title, scheme.source_url)
+                    scheme.level, scheme.state = guess.level, guess.state
                 scheme.save()
                 return scheme.pk, not (scheme.locally_edited or scheme.is_manual)
         except IntegrityError:

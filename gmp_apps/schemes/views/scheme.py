@@ -12,7 +12,7 @@ from gmp_apps.schemes.dataclasses.request.delete.delete_scheme import DeleteSche
 from gmp_apps.schemes.dataclasses.request.get.get_scheme import GetSchemeRequest
 from gmp_apps.schemes.dataclasses.request.get.get_tags import GetTagsRequest
 from gmp_apps.schemes.models import Scheme, SchemeTag
-from gmp_apps.schemes.models.scheme import SchemeStatus
+from gmp_apps.schemes.models.scheme import SchemeLevel, SchemeStatus
 from gmp_apps.schemes.utils import SchemeUtils
 
 
@@ -58,6 +58,19 @@ class SchemesSchemeView:
             queryset = queryset.filter(group=params.group)
         rows = queryset.values('group', 'name').annotate(count=Count('scheme')).order_by('group', 'name')
         return Response(Utils.success_response_data(message=self.data_get, data={'data': list(rows)}))
+
+    @Common().exception_handler
+    def get_states_extract(self) -> Response:
+        """National and per-state counts of published schemes, so clients can build the filter. Only places that have
+        at least one published scheme are listed; schemes with no level set yet are in neither."""
+        published = Scheme.objects.filter(status=SchemeStatus.PUBLISHED)
+        rows = []
+        national = published.filter(level=SchemeLevel.NATIONAL).count()
+        if national:
+            rows.append({'level': SchemeLevel.NATIONAL, 'state': None, 'count': national})
+        for row in published.filter(level=SchemeLevel.STATE).values('state').annotate(count=Count('scheme_id')).order_by('state'):
+            rows.append({'level': SchemeLevel.STATE, 'state': row['state'], 'count': row['count']})
+        return Response(Utils.success_response_data(message=self.data_get, data={'data': rows}))
 
     @Common().exception_handler
     def delete_extract(self, params: DeleteSchemeRequest) -> Response:

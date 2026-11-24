@@ -1,14 +1,21 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
 from gmp_apps.authentication.models import User
+from gmp_apps.schemes.classification import NATIONAL, STATE, STATE_CHOICES
 
 
 class SchemeStatus(models.TextChoices):
     PENDING_REVIEW = 'pending_review', 'Pending review'  # imported or added, not visible to members
     PUBLISHED = 'published', 'Published'                  # visible to members
     UNPUBLISHED = 'unpublished', 'Unpublished'            # hidden again by an admin
+
+
+class SchemeLevel(models.TextChoices):
+    NATIONAL = NATIONAL, 'National'
+    STATE = STATE, 'State'
 
 
 class Scheme(models.Model):
@@ -36,6 +43,10 @@ class Scheme(models.Model):
     is_accepting_applications = models.BooleanField(
         default=True, help_text='Shown to members as Active or Closed. Set by an admin; the sync never changes it.',
     )
+    # National or state. Empty means "not set yet": such a scheme is still listed, it just matches neither filter.
+    # Filled by the sync only while empty (see classification.py), editable by an admin, never overwritten once set.
+    level = models.CharField(max_length=8, choices=SchemeLevel.choices, blank=True, default='')
+    state = models.CharField(max_length=60, choices=STATE_CHOICES, blank=True, default='')
     is_manual = models.BooleanField(default=False)
     # True once an admin edits an imported scheme: the sync then leaves its content alone.
     locally_edited = models.BooleanField(default=False)
@@ -62,6 +73,13 @@ class Scheme(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def clean(self) -> None:
+        super().clean()
+        if self.level == SchemeLevel.STATE and not self.state:
+            raise ValidationError({'state': 'Choose the state for a state scheme.'})
+        if self.level != SchemeLevel.STATE and self.state:
+            raise ValidationError({'state': 'A state can only be set on a state scheme.'})
 
     def set_status(self, status: str, admin: User) -> None:
         self.status = status

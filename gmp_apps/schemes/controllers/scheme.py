@@ -12,6 +12,7 @@ from gmp_apps.schemes.serializers.request.get.get_scheme import GetSchemeRequest
 from gmp_apps.schemes.serializers.request.get.get_tags import GetTagsRequestSerializer
 from gmp_apps.schemes.serializers.response.get.get_scheme import SchemeResponseGetSerializer
 from gmp_apps.schemes.serializers.response.get_all.get_all_scheme import SchemeResponseGetAllSerializer
+from gmp_apps.schemes.serializers.response.get_all.get_all_state import StateResponseGetAllSerializer
 from gmp_apps.schemes.serializers.response.get_all.get_all_tag import TagResponseGetAllSerializer
 from gmp_apps.schemes.views.scheme import SchemesSchemeView
 
@@ -21,7 +22,7 @@ SCHEME_ID = [OpenApiParameter('scheme_id', int, required=True)]
 class SchemesSchemeViewController:
     @extend_schema(
         description=(
-            'Published government initiatives. Filter keys: department, schemeType, personType, caste (see tag/get_all for values). Sort keys: schemeId, title, department, '
+            'Published government initiatives. Filter keys: department, level (national or state), state (see state/get_all for the values), schemeType, personType, caste (see tag/get_all for values). Sort keys: schemeId, title, department, '
             'updatedDateTime, createdDateTime. Search: title, department, description, eligibility, benefits, highlights.'
         ),
         parameters=SwaggerPage.get_all_parameters(),
@@ -43,6 +44,15 @@ class SchemesSchemeViewController:
     @SerializerValidations(serializer=GetTagsRequestSerializer).validate
     def get_tags(request: Request) -> Response:
         return SchemesSchemeView().get_tags_extract(params=request.params)
+
+    @extend_schema(
+        description='Where published schemes apply: one national row and one row per state, each with a scheme count. Use the values with filter_key=level or filter_key=state on get_all. Schemes whose level is not set yet are in neither.',
+        responses=SwaggerPage.response(response=StateResponseGetAllSerializer),
+    )
+    @api_view(['GET'])
+    @permission_classes([IsMemberRole])
+    def get_states(request: Request) -> Response:
+        return SchemesSchemeView().get_states_extract()
 
     @extend_schema(
         description='One published scheme with every captured detail: eligibility, benefits, application procedure, documents, department, highlights, overview table, links (official website and important links), documents (brochure and guideline PDFs, served from this platform), contact details, additional sections, tags and images (served from this platform). Links and contact details are copied from the source and can go stale. Unpublished ids return 404.',
