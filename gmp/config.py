@@ -36,6 +36,8 @@ class Configurations:
     invite_expiry_interval_minutes: int = config('INVITE_EXPIRY_INTERVAL_MINUTES', default=60, cast=int)
     contact_max_open_requests: int = config('CONTACT_MAX_OPEN_REQUESTS', default=5, cast=int)
     contact_max_per_day: int = config('CONTACT_MAX_PER_DAY', default=10, cast=int)
+    contact_public_submit_rate: str = config('CONTACT_PUBLIC_SUBMIT_RATE', default='5/hour')
+    contact_public_category_rate: str = config('CONTACT_PUBLIC_CATEGORY_RATE', default='60/min')
     scheme_source_host: str = config('SCHEME_SOURCE_HOST', default='www.govtschemes.in')
     scheme_sync_delay_seconds: float = config('SCHEME_SYNC_DELAY_SECONDS', default=1.0, cast=float)
     scheme_sync_max_pages: int = config('SCHEME_SYNC_MAX_PAGES', default=2000, cast=int)

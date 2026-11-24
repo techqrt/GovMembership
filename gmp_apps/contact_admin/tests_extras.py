@@ -231,7 +231,7 @@ class AdminTests(ContactExtrasBase):
         self.assertNotContains(page, '/download/')
         listing = self.web(handler).get('/admin/contact_admin/contactrequest/?priority__exact=high')
         self.assertContains(listing, 'Broken page')
-        self.assertIn('priority', [spec.field_path for spec in listing.context['cl'].filter_specs])     # the filter is offered, not just accepted
+        self.assertIn('priority', [getattr(spec, 'field_path', None) for spec in listing.context['cl'].filter_specs])     # the filter is offered, not just accepted
         self.assertNotContains(self.web(handler).get('/admin/contact_admin/contactrequest/?priority__exact=low'), 'Broken page')
 
     def test_a_handler_who_may_download_gets_logged_links(self) -> None:

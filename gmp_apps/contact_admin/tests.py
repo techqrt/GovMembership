@@ -68,7 +68,7 @@ class CategoryApiTests(ContactBaseTestCase):
 
     def test_seeded_active_categories_for_members(self) -> None:
         rows = self.as_user(self.member()).get(self.URL).data['data']['data']
-        self.assertEqual([r['name'] for r in rows], ['General enquiry', 'Membership', 'Referrals', 'Technical issue', 'Other'])
+        self.assertEqual([r['name'] for r in rows], ['Membership', 'Schemes', 'Complaints', 'Any other'])   # FG9: the Contact Us topics
         self.assertEqual(set(rows[0]), {'categoryId', 'name'})
 
     def test_inactive_category_is_hidden_and_cannot_be_used(self) -> None:
@@ -80,8 +80,8 @@ class CategoryApiTests(ContactBaseTestCase):
 
     def test_search_sort_and_permissions(self) -> None:
         member = self.member()
-        found = self.as_user(member).get(f'{self.URL}?search_key=tech').data['data']['data']
-        self.assertEqual([r['name'] for r in found], ['Technical issue'])
+        found = self.as_user(member).get(f'{self.URL}?search_key=sche').data['data']['data']
+        self.assertEqual([r['name'] for r in found], ['Schemes'])
         self.assertEqual(self.as_user(member).get(f'{self.URL}?sort_by=bad').status_code, 400)
         self.assertEqual(self.as_user(None).get(self.URL).status_code, 401)
         self.assertEqual(self.as_user(self.staff()).get(self.URL).status_code, 403)

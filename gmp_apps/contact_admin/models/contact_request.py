@@ -25,15 +25,20 @@ class RequestPriority(models.TextChoices):
     HIGH = 'high', 'High'
 
 
+NO_SUBJECT = '(no subject)'
 OPEN_STATUSES = (RequestStatus.OPEN, RequestStatus.IN_PROGRESS)
 REPLY_REQUIRED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED)
 
 
 class ContactRequest(models.Model):
     request_id = models.BigAutoField(primary_key=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='contact_requests')
+    # Empty for a request sent from the public Contact Us form; then the guest_* fields say who to contact.
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name='contact_requests')
+    guest_name = models.CharField(max_length=150, blank=True, default='')
+    guest_email = models.CharField(max_length=254, blank=True, default='')
+    guest_mobile = models.CharField(max_length=20, blank=True, default='')
     category = models.ForeignKey(ContactCategory, on_delete=models.PROTECT, related_name='requests')
-    subject = models.CharField(max_length=200)
+    subject = models.CharField(max_length=200, blank=True, default='')
     description = models.TextField(max_length=5000)
     status = models.CharField(max_length=16, choices=RequestStatus.choices, default=RequestStatus.OPEN)
     # The member's own hint about urgency. It never changes how the request is handled.
@@ -49,9 +54,19 @@ class ContactRequest(models.Model):
     class Meta:
         db_table = 'contact_request'
         indexes = [models.Index(fields=['user', 'status'])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(user__isnull=False) | (~models.Q(guest_name='') & (~models.Q(guest_email='') | ~models.Q(guest_mobile=''))),
+                name='contact_request_member_or_guest',
+            ),
+        ]
 
     def __str__(self) -> str:
-        return f'#{self.request_id} {self.subject}'
+        return f'#{self.request_id} {self.subject or NO_SUBJECT}'
+
+    @property
+    def is_guest(self) -> bool:
+        return self.user_id is None
 
     @staticmethod
     def create(user: User, category: ContactCategory, subject: str, description: str, priority: str = RequestPriority.NORMAL) -> 'ContactRequest':
@@ -62,6 +77,16 @@ class ContactRequest(models.Model):
         if ContactRequest.objects.filter(user=user, created_date_time__gte=since).count() >= Configurations.contact_max_per_day:
             raise ValueError(Constants.contact_daily_limit)
         return ContactRequest.objects.create(user=user, category=category, subject=subject, description=description, priority=priority)
+
+    @staticmethod
+    def create_public(
+        category: ContactCategory, full_name: str, email: str | None, mobile_number: str | None, subject: str, description: str,
+    ) -> 'ContactRequest':
+        """A guest's request from the public form. Abuse is held back by the per-IP throttle and the honeypot, not here."""
+        return ContactRequest.objects.create(
+            user=None, category=category, guest_name=full_name, guest_email=email or '', guest_mobile=mobile_number or '',
+            subject=subject, description=description,
+        )
 
     @staticmethod
     def check_response(current_status: str, new_status: str, reply: str) -> None:
@@ -91,7 +116,7 @@ class ContactRequest(models.Model):
                 item.admin_reply, item.replied_by, item.replied_date_time = reply, admin, timezone.now()
             item.status = status
             item.save()
-            if reply_changed or status_changed:
+            if item.user_id and (reply_changed or status_changed):   # nothing is sent to a guest: no provider exists
                 label = RequestStatus(status).label.lower()
                 Notification.send(
                     item.user_id, NotificationKind.SUPPORT_UPDATE, 'Update on your request',

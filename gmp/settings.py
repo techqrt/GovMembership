@@ -123,7 +123,9 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_RATES': {'auth': Configurations.auth_throttle_rate, 'chatbot': Configurations.chatbot_rate,
                                'member_document_upload': Configurations.member_document_upload_rate,
-                               'app_text': Configurations.app_text_rate},
+                               'app_text': Configurations.app_text_rate,
+                               'contact_submit': Configurations.contact_public_submit_rate,
+                               'contact_category': Configurations.contact_public_category_rate},
     'EXCEPTION_HANDLER': 'gmp_apps.common.exception_handler.api_exception_handler',
 }
 

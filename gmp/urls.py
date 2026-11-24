@@ -11,6 +11,7 @@ urlpatterns = [
     path('auth/', include('gmp_apps.authentication.urls')),
     path('membership/', include('gmp_apps.membership.urls')),
     path('contact_admin/', include('gmp_apps.contact_admin.urls')),
+    path('contact/', include('gmp_apps.contact_admin.urls_public')),
     path('schemes/', include('gmp_apps.schemes.urls')),
     path('portals/', include('gmp_apps.portals.urls')),
     path('content/', include('gmp_apps.content.urls')),
